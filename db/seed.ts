@@ -85,7 +85,7 @@ async function main() {
             id: ids.smartMembership,
             roomId: ids.room,
             userId: ids.smart,
-            role: "OWNER",
+            role: "MEMBER",
           },
           {
             id: ids.partnerMembership,
@@ -94,7 +94,10 @@ async function main() {
             role: "MEMBER",
           },
         ])
-        .onConflictDoNothing();
+        .onConflictDoUpdate({
+          target: [roomMembers.roomId, roomMembers.userId],
+          set: { role: "MEMBER" },
+        });
 
       await tx
         .insert(statusMaster)

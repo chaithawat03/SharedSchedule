@@ -10,3 +10,10 @@ export function createDatabase(connectionString = process.env.DATABASE_URL) {
   const pool = new Pool({ connectionString });
   return { db: drizzle(pool, { schema }), pool };
 }
+
+let sharedDatabase: ReturnType<typeof createDatabase> | undefined;
+
+export function getDatabase() {
+  sharedDatabase ??= createDatabase();
+  return sharedDatabase;
+}
