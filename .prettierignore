@@ -1,0 +1,9 @@
+node_modules
+.next
+coverage
+package-lock.json
+drizzle/meta
+SHAREDSCHEDULE_BLUEPRINT.md
+Milestone 1.md
+AGENTS.md
+CLAUDE.md
