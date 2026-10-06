@@ -1,14 +1,26 @@
 import Link from "next/link";
-import type { RoomDetail } from "../../services/room.service";
+import type {
+  RoomDetail,
+  RoomParticipant,
+  RoomRecord,
+} from "../../services/room.service";
+import type { CalendarMonth } from "../../types/calendar";
+import { MonthCalendar } from "../calendar/MonthCalendar";
 import { InviteControl } from "./InviteControl";
 import { JoinParticipantButton } from "./JoinParticipantButton";
 
 export function RoomDetailView({
   room,
   isOwner,
+  calendar,
 }: {
-  room: RoomDetail;
+  room:
+    | RoomDetail
+    | (RoomRecord & {
+        participants: Pick<RoomParticipant, "userId" | "displayName">[];
+      });
   isOwner: boolean;
+  calendar?: CalendarMonth;
 }) {
   return (
     <main className="min-h-dvh bg-[#f6f8f5] px-5 pb-[calc(2rem+env(safe-area-inset-bottom))] pt-[calc(1.25rem+env(safe-area-inset-top))] text-[#18332f] sm:px-8">
@@ -32,8 +44,13 @@ export function RoomDetailView({
             <p className="mt-3 text-sm text-[#6c8476]">{room.description}</p>
           )}
         </div>
+        {calendar && (
+          <div className="-mx-5 mt-8 sm:mx-0">
+            <MonthCalendar initialModel={calendar} />
+          </div>
+        )}
         <section
-          className="mt-8 rounded-3xl border border-[#dce8e0] bg-white p-5 sm:p-6"
+          className="mt-5 rounded-3xl border border-[#dce8e0] bg-white p-5 sm:p-6"
           aria-labelledby="participants-heading"
         >
           <h2 id="participants-heading" className="text-xl font-semibold">
@@ -72,12 +89,6 @@ export function RoomDetailView({
             <InviteControl roomId={room.id} />
           </div>
         )}
-        <section className="mt-5 rounded-3xl border border-dashed border-[#cbded2] p-5 sm:p-6">
-          <h2 className="text-lg font-semibold">Calendar is next</h2>
-          <p className="mt-2 text-sm leading-6 text-[#6c8476]">
-            The shared monthly calendar arrives in Milestone 4.
-          </p>
-        </section>
       </div>
     </main>
   );

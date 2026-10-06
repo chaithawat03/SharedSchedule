@@ -1,6 +1,6 @@
 # SharedSchedule
 
-Mobile-first shared scheduling, built with Next.js App Router, TypeScript, Tailwind CSS, PostgreSQL, and Drizzle ORM. This repository currently contains **Milestone 3: Rooms and invites**. The shared calendar arrives in Milestone 4.
+Mobile-first shared scheduling, built with Next.js App Router, TypeScript, Tailwind CSS, PostgreSQL, and Drizzle ORM. This repository contains **Milestone 4: Calendar Read Model**.
 
 ## Requirements
 
@@ -55,19 +55,28 @@ The server generates a random 32-byte token and stores only its SHA-256 hash in 
 
 ## Rooms and invites
 
-`/rooms` lists active rooms owned by or joined by the current user without duplicates. `/room/[roomId]` shows the participant list, an explicit owner participation action when needed, and an invite control for the owner; its calendar panel is reserved for Milestone 4. The invite control provides a readonly URL field and a **Copy invite URL** button. It uses the Clipboard API where available, then attempts browser copy from the selected field; if automatic copy is unavailable, the URL remains selected for manual copying on mobile Safari. `/invite/[token]` shows the invited room, reuses the phone identity form when signed out, then joins and opens that room automatically after login or registration.
+`/rooms` lists active rooms owned by or joined by the current user without duplicates. `/room/[roomId]` shows the monthly calendar, participant list, an explicit owner participation action when needed, and an invite control for the owner. The invite control provides a readonly URL field and a **Copy invite URL** button. It uses the Clipboard API where available, then attempts browser copy from the selected field; if automatic copy is unavailable, the URL remains selected for manual copying on mobile Safari. `/invite/[token]` shows the invited room, reuses the phone identity form when signed out, then joins and opens that room automatically after login or registration.
 
-| Method | Route                        | Access                      | Purpose                                       |
-| ------ | ---------------------------- | --------------------------- | --------------------------------------------- |
-| `GET`  | `/api/rooms`                 | Session                     | List owned and joined rooms                   |
-| `POST` | `/api/rooms`                 | Session                     | Create a named room with zero participants    |
-| `GET`  | `/api/rooms/:roomId`         | Owner or active participant | Read room and participants                    |
-| `POST` | `/api/rooms/:roomId/join`    | Owner                       | Join as a calendar participant, idempotently  |
-| `POST` | `/api/rooms/:roomId/invites` | Owner                       | Create a share link                           |
-| `GET`  | `/api/invites/:token`        | Public link holder          | Inspect invite state and room name when valid |
-| `POST` | `/api/invites/:token/join`   | Session                     | Join as `MEMBER` and receive the room URL     |
+| Method | Route                                           | Access                      | Purpose                                       |
+| ------ | ----------------------------------------------- | --------------------------- | --------------------------------------------- |
+| `GET`  | `/api/rooms`                                    | Session                     | List owned and joined rooms                   |
+| `POST` | `/api/rooms`                                    | Session                     | Create a named room with zero participants    |
+| `GET`  | `/api/rooms/:roomId`                            | Owner or active participant | Read room and participants                    |
+| `POST` | `/api/rooms/:roomId/join`                       | Owner                       | Join as a calendar participant, idempotently  |
+| `POST` | `/api/rooms/:roomId/invites`                    | Owner                       | Create a share link                           |
+| `GET`  | `/api/invites/:token`                           | Public link holder          | Inspect invite state and room name when valid |
+| `POST` | `/api/invites/:token/join`                      | Session                     | Join as `MEMBER` and receive the room URL     |
+| `GET`  | `/api/rooms/:roomId/calendar?year=YYYY&month=M` | Owner or active participant | Read one complete calendar month              |
 
 The invite creator may send `expiresAt` as a future ISO date and `maxUses` as a positive integer. The defaults are seven days and no usage limit. Invite URLs use random 32-byte tokens; the database stores only a SHA-256 hash. The raw token is returned in the creation response and is not retrievable later. Invalid or inactive-room invites are rejected, and expired or exhausted invites cannot add new participants. A repeat join by an existing active participant returns the room without using another invite slot, even if the link later expires or reaches its limit. The join transaction locks the invite row before checking and incrementing usage, so concurrent joins cannot exceed its limit. The owner participation route checks `rooms.owner_user_id` inside a transaction and does not use an invite. Room creation, invite creation, and new joins write audit records in the same transaction.
+
+## Monthly calendar
+
+The room page renders the current Asia/Bangkok month on the server. Previous and next controls request one complete month from the calendar endpoint. The response contains room and current-user details, active members, room-scoped statuses and locations, month bounds, Bangkok `today`, and a `days` object keyed by `YYYY-MM-DD`. Each member/day has a nullable `baseSchedule` and an array of events. An empty room still shows the date grid. A room owner without active membership can read the calendar but has no lane.
+
+Work patterns and overrides are user-global and apply in every room where the user is an active participant. A date override wins over the weekday pattern; absence of both gives a null base schedule. Events are additional entries, including WORK plus OT on one date. A multi-day event remains one database row and appears on each intersecting day in the read model. Timed multi-day entries show their original continuous date/time span in the day sheet. Calendar dates and wall-clock times are returned as strings, without converting them through client timezones.
+
+The server uses a fixed set of room, participant, master-data, pattern, override, and overlapping-event queries. The event query restricts room, active participant IDs, date overlap, and nondeleted rows. Only metadata from the requested room enters the response; malformed foreign-room references receive safe display fallbacks. The calendar is read only in this milestone. Event CRUD begins in Milestone 5.
 
 To run PostgreSQL integration tests, provide `TEST_DATABASE_URL` for a **dedicated** database whose name contains `test`, then run `npm test`. The tests apply migrations and clean up their fixtures. Without `TEST_DATABASE_URL`, they are reported as skipped; unit, service, HTTP, and screen tests still run. No local database is needed for the production build.
 

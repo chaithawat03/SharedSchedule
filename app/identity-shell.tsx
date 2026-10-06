@@ -89,7 +89,7 @@ export function IdentityShell({ user }: { user: PublicSessionUser | null }) {
                   </p>
                   <h2 className="mt-2 text-3xl font-semibold tracking-[-0.05em] text-[#173b34]">{`Signed in as ${user.displayName}`}</h2>
                   <p className="mt-3 text-sm leading-6 text-[#718b7c]">
-                    Your shared calendar will appear here in a later milestone.
+                    Open your rooms to see the shared monthly calendar.
                   </p>
                   {user.phoneDisplay && (
                     <p className="mt-5 text-sm font-medium text-[#456c5c]">
