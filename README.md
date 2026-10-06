@@ -1,6 +1,6 @@
 # SharedSchedule
 
-Mobile-first shared scheduling, built with Next.js App Router, TypeScript, Tailwind CSS, PostgreSQL, and Drizzle ORM. This repository currently contains **Milestone 2: Phone identity and sessions**. Room actions, invites, and the calendar arrive in later milestones.
+Mobile-first shared scheduling, built with Next.js App Router, TypeScript, Tailwind CSS, PostgreSQL, and Drizzle ORM. This repository currently contains **Milestone 3: Rooms and invites**. The shared calendar arrives in Milestone 4.
 
 ## Requirements
 
@@ -22,7 +22,7 @@ npm run dev
 
 Open <http://localhost:3000>. If Docker is unavailable, start a PostgreSQL database yourself and set `DATABASE_URL` in `.env.local`. The commands above generate a private local password shared by Compose and the connection string. The Drizzle commands load `.env.local` through their configuration and seed script.
 
-Enter a Thai mobile number to sign in. If the number is new, the app asks for a display name. The sample seed provides Smart (`0812345678`) and Partner (`0899999999`) for local development.
+Enter a Thai mobile number to sign in. If the number is new, the app asks for a display name. The sample seed provides Smart (`0812345678`) and Partner (`0899999999`) for local development. Signed-in users arrive at `/rooms`, where they can create and open rooms.
 
 ## Scripts
 
@@ -43,7 +43,7 @@ Enter a Thai mobile number to sign in. If the number is new, the app asks for a 
 
 Future product behavior follows `UI → Route Handler / Server Action → Service → Validation / Permission → Drizzle ORM → PostgreSQL`. Milestone 1 defines the database boundary in `lib/db/`; it does not implement product routes or services early. Calendar dates use PostgreSQL `date`, and local work times use `time without time zone`. Application date and time assumptions use `Asia/Bangkok`.
 
-The schema includes users, sessions, rooms, room members, invites, statuses, locations, work patterns, work overrides, events, notifications, and audit records. Events allow multiple rows per day, date spans, all-day or timed entries, open end times, and soft deletion. `rooms.owner_user_id` is the only source of room administrative authority; `room_members` represents calendar participation, and its `role` must not grant ownership. **A newly created room has zero calendar participants and zero events.** Its owner must explicitly join or be added before appearing in that room's calendar. Room creation must never pre-populate work schedules or events.
+The schema includes users, sessions, rooms, room members, invites, statuses, locations, work patterns, work overrides, events, notifications, and audit records. Events allow multiple rows per day, date spans, all-day or timed entries, open end times, and soft deletion. `rooms.owner_user_id` is the only source of room administrative authority; `room_members` represents calendar participation, and its `role` does not grant ownership. **A newly created room has zero calendar participants and zero events.** Its owner may join through an invite to become a participant; joining inserts a `MEMBER` row and does not change administrative authority. Room creation never pre-populates work schedules or events.
 
 The development seed is a separate explicit fixture operation. It adds Smart and Partner as participants of the sample room so the later calendar milestones have realistic data. It does not define room-creation behavior. The seed can be re-run without duplicating its records.
 
@@ -51,15 +51,32 @@ The development seed is a separate explicit fixture operation. It adds Smart and
 
 The server normalizes Thai mobile numbers such as `081-234-5678`, `+66 81 234 5678`, and `66812345678` to `+66812345678`; `phone_display` stays separate for the interface. `POST /api/session/login` returns `requiresRegistration` for a new number without a display name. Repeating the request with a display name creates the user and a session. Existing numbers create a session immediately. `GET /api/session/me` returns the current user for a valid session, and `POST /api/session/logout` revokes it.
 
-The server generates a random 32-byte token and stores only its SHA-256 hash in PostgreSQL. The browser receives the raw token only in an HttpOnly, SameSite=Lax cookie with `Path=/`, a 30-day lifetime, and `Secure` in production. Session checks reject expired or revoked records and update `last_active_at` at most once per hour. The landing page resolves the cookie on the server and shows a temporary signed-in view.
+The server generates a random 32-byte token and stores only its SHA-256 hash in PostgreSQL. The browser receives the raw token only in an HttpOnly, SameSite=Lax cookie with `Path=/`, a 30-day lifetime, and `Secure` in production. Session checks reject expired or revoked records and update `last_active_at` at most once per hour. The landing page resolves the cookie on the server and sends signed-in users to their room list.
 
-To run the PostgreSQL integration test, provide `TEST_DATABASE_URL` for a **dedicated** database whose name contains `test`, then run `npm test`. The test applies migrations and cleans up its user. Without `TEST_DATABASE_URL`, it is reported as skipped; the unit and HTTP adapter tests still run. No local database is needed for the production build.
+## Rooms and invites
+
+`/rooms` lists active rooms owned by or joined by the current user without duplicates. `/room/[roomId]` shows the participant list and an invite control for the owner; its calendar panel is reserved for Milestone 4. `/invite/[token]` shows the invited room, reuses the phone identity form when signed out, then joins and opens that room automatically after login or registration.
+
+| Method | Route                        | Access                      | Purpose                                       |
+| ------ | ---------------------------- | --------------------------- | --------------------------------------------- |
+| `GET`  | `/api/rooms`                 | Session                     | List owned and joined rooms                   |
+| `POST` | `/api/rooms`                 | Session                     | Create a named room with zero participants    |
+| `GET`  | `/api/rooms/:roomId`         | Owner or active participant | Read room and participants                    |
+| `POST` | `/api/rooms/:roomId/invites` | Owner                       | Create a share link                           |
+| `GET`  | `/api/invites/:token`        | Public link holder          | Inspect invite state and room name when valid |
+| `POST` | `/api/invites/:token/join`   | Session                     | Join as `MEMBER` and receive the room URL     |
+
+The invite creator may send `expiresAt` as a future ISO date and `maxUses` as a positive integer. The defaults are seven days and no usage limit. Invite URLs use random 32-byte tokens; the database stores only a SHA-256 hash. The raw token is returned in the creation response and is not retrievable later. Invalid or inactive-room invites are rejected, and expired or exhausted invites cannot add new participants. A repeat join by an existing active participant returns the room without using another invite slot, even if the link later expires or reaches its limit. The join transaction locks the invite row before checking and incrementing usage, so concurrent joins cannot exceed its limit. Room creation, invite creation, and new joins write audit records in the same transaction.
+
+To run PostgreSQL integration tests, provide `TEST_DATABASE_URL` for a **dedicated** database whose name contains `test`, then run `npm test`. The tests apply migrations and clean up their fixtures. Without `TEST_DATABASE_URL`, they are reported as skipped; unit, service, HTTP, and screen tests still run. No local database is needed for the production build.
+
+Milestone 3 verification on 2026-10-06: `npm run format:check`, `npm run lint`, `npm run typecheck`, and `npm run build` passed. `npm test` passed 49 tests; three PostgreSQL integration tests were skipped because `TEST_DATABASE_URL` was not available. The concurrency test is among those skipped tests. Docker and local PostgreSQL tools were unavailable in this environment.
 
 ## Security note
 
-**Phone number lookup is not real authentication. Anyone who knows another user's phone number can impersonate them.** Future write routes must validate the session, room membership or room owner authority, and event ownership on the server.
+**Phone number lookup is not real authentication. Anyone who knows another user's phone number can impersonate them.** Room write routes validate the session and room owner authority on the server. Future event routes must also validate room membership and event ownership on the server.
 
-Do not commit `.env.local`, production credentials, or session or invite tokens. The repository only contains a sample development connection string.
+Do not commit `.env.local`, production credentials, or session or invite tokens. Invite URLs grant room access to anyone who can establish a phone identity and should be shared only with intended participants. The repository only contains a sample development connection string.
 
 ## Deployment
 

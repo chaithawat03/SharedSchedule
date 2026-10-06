@@ -1,4 +1,5 @@
 import { cookies } from "next/headers";
+import { redirect } from "next/navigation";
 import { IdentityShell } from "./identity-shell";
 import { SESSION_COOKIE_NAME } from "../lib/session/cookie";
 import { isSessionToken } from "../lib/session/token";
@@ -10,5 +11,6 @@ export default async function Home() {
   const user = isSessionToken(token)
     ? await resolveSession(token, getSessionRepository())
     : null;
+  if (user) redirect("/rooms");
   return <IdentityShell user={user} />;
 }
