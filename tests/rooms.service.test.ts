@@ -4,6 +4,7 @@ import {
   createRoomInvite,
   getRoom,
   inspectInvite,
+  joinOwnerAsParticipant,
   joinRoomInvite,
   listRooms,
   type RoomRepository,
@@ -90,6 +91,15 @@ class MemoryRooms implements RoomRepository {
       status: "ACTIVE",
     });
   }
+  async addOwnerParticipant(id: string, userId: string) {
+    const room = this.rooms.get(id);
+    if (!room || room.status !== "ACTIVE") return { kind: "notFound" as const };
+    if (room.ownerUserId !== userId) return { kind: "forbidden" as const };
+    const members = this.memberships.get(id) ?? new Set<string>();
+    members.add(userId);
+    this.memberships.set(id, members);
+    return { kind: "joined" as const, roomId: id };
+  }
   async getInvite(hash: string) {
     const invite = this.invites.get(hash);
     const room = invite && this.rooms.get(invite.roomId);
@@ -155,6 +165,37 @@ describe("rooms", () => {
     });
     await expect(
       createRoomInvite(owner, "not-a-uuid", {}, repo, now),
+    ).rejects.toMatchObject({ code: "NOT_FOUND" });
+  });
+
+  it("lets the owner explicitly join as a participant without an invite or duplicate membership", async () => {
+    const repo = new MemoryRooms();
+    await createRoom(owner, { name: "Together" }, repo);
+    expect(repo.memberships.get(roomId)).toBeUndefined();
+    expect(await joinOwnerAsParticipant(owner, roomId, repo)).toEqual({
+      roomId,
+    });
+    expect((await getRoom(owner, roomId, repo)).participants).toEqual([
+      { userId: owner, displayName: owner, role: "MEMBER", status: "ACTIVE" },
+    ]);
+    expect(await joinOwnerAsParticipant(owner, roomId, repo)).toEqual({
+      roomId,
+    });
+    expect(repo.memberships.get(roomId)?.size).toBe(1);
+    expect(repo.invites.size).toBe(0);
+  });
+
+  it("rejects nonowners and inactive rooms for explicit participant joining", async () => {
+    const repo = new MemoryRooms();
+    await createRoom(owner, { name: "Together" }, repo);
+    repo.memberships.set(roomId, new Set([member]));
+    await expect(
+      joinOwnerAsParticipant(member, roomId, repo),
+    ).rejects.toMatchObject({ code: "FORBIDDEN" });
+    expect(repo.memberships.get(roomId)?.has(owner)).toBe(false);
+    repo.rooms.get(roomId)!.status = "INACTIVE";
+    await expect(
+      joinOwnerAsParticipant(owner, roomId, repo),
     ).rejects.toMatchObject({ code: "NOT_FOUND" });
   });
 });

@@ -17,6 +17,7 @@ import {
   createRoom,
   createRoomInvite,
   getRoom,
+  joinOwnerAsParticipant,
   joinRoomInvite,
   listRooms,
 } from "../services/room.service";
@@ -82,6 +83,16 @@ suite("room and invite PostgreSQL integration", () => {
         }),
       ]),
     );
+    await joinOwnerAsParticipant(userIds[0], room.id, repo);
+    await joinOwnerAsParticipant(userIds[0], room.id, repo);
+    expect(
+      await database.db
+        .select()
+        .from(roomMembers)
+        .where(eq(roomMembers.roomId, room.id)),
+    ).toEqual([
+      expect.objectContaining({ userId: userIds[0], role: "MEMBER" }),
+    ]);
     const invite = await createRoomInvite(
       userIds[0],
       room.id,
@@ -89,7 +100,6 @@ suite("room and invite PostgreSQL integration", () => {
       repo,
       at,
     );
-    await joinRoomInvite(userIds[0], invite.token, repo, at);
     await joinRoomInvite(userIds[1], invite.token, repo, at);
     expect(
       (await listRooms(userIds[0], repo)).filter((item) => item.id === room.id),
@@ -103,7 +113,7 @@ suite("room and invite PostgreSQL integration", () => {
       .select()
       .from(roomInvites)
       .where(eq(roomInvites.roomId, room.id));
-    expect(storedInvite.usedCount).toBe(2);
+    expect(storedInvite.usedCount).toBe(1);
   });
 
   it("allows only one of two concurrent joins to consume the final use", async () => {

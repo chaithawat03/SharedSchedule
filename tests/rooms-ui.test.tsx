@@ -61,6 +61,33 @@ describe("room screens", () => {
     );
     expect(memberHtml).toContain("Partner");
     expect(memberHtml).not.toContain("Create invite");
+    expect(memberHtml).not.toContain("Join as Participant");
+  });
+
+  it("offers explicit participation only to an owner who is not yet a participant", () => {
+    const detail = { ...room, participants: [] };
+    const ownerHtml = renderToStaticMarkup(
+      <RoomDetailView room={detail} isOwner />,
+    );
+    expect(ownerHtml).toContain("Join as Participant");
+    expect(ownerHtml).toContain("No participants yet");
+    const joinedHtml = renderToStaticMarkup(
+      <RoomDetailView
+        room={{
+          ...detail,
+          participants: [
+            {
+              userId: room.ownerUserId,
+              displayName: "Smart",
+              role: "MEMBER",
+              status: "ACTIVE",
+            },
+          ],
+        }}
+        isOwner
+      />,
+    );
+    expect(joinedHtml).not.toContain("Join as Participant");
   });
 
   it("shows phone identity for a signed-out invite and joins immediately after identity", () => {

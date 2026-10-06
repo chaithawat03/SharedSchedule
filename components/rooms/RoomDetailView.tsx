@@ -1,6 +1,7 @@
 import Link from "next/link";
 import type { RoomDetail } from "../../services/room.service";
 import { InviteControl } from "./InviteControl";
+import { JoinParticipantButton } from "./JoinParticipantButton";
 
 export function RoomDetailView({
   room,
@@ -40,8 +41,8 @@ export function RoomDetailView({
           </h2>
           {room.participants.length === 0 ? (
             <p className="mt-3 text-sm leading-6 text-[#6c8476]">
-              No participants yet. The room owner can share an invite and may
-              join as a participant through it.
+              No participants yet. The room owner can join here or share an
+              invite.
             </p>
           ) : (
             <ul className="mt-4 space-y-3">
@@ -61,6 +62,10 @@ export function RoomDetailView({
               ))}
             </ul>
           )}
+          {isOwner &&
+            !room.participants.some(
+              (participant) => participant.userId === room.ownerUserId,
+            ) && <JoinParticipantButton roomId={room.id} />}
         </section>
         {isOwner && (
           <div className="mt-5">

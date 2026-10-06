@@ -1,12 +1,15 @@
 "use client";
 
-import { useState } from "react";
+import { useRef, useState } from "react";
+import { copyInviteUrl } from "./copy-invite-url";
 
 export function InviteControl({ roomId }: { roomId: string }) {
   const [url, setUrl] = useState("");
   const [maxUses, setMaxUses] = useState("");
   const [pending, setPending] = useState(false);
   const [error, setError] = useState("");
+  const [copyFeedback, setCopyFeedback] = useState("");
+  const urlField = useRef<HTMLInputElement>(null);
 
   async function create() {
     if (pending) return;
@@ -25,11 +28,28 @@ export function InviteControl({ roomId }: { roomId: string }) {
         return;
       }
       setUrl(data.url);
+      setCopyFeedback("");
     } catch {
       setError("Unable to connect. Please try again.");
     } finally {
       setPending(false);
     }
+  }
+
+  async function copy() {
+    const result = await copyInviteUrl(
+      url,
+      urlField.current,
+      navigator.clipboard,
+      () => document.execCommand("copy"),
+    );
+    setCopyFeedback(
+      result === "copied"
+        ? "Invite URL copied"
+        : result === "selected"
+          ? "URL selected. Use Copy from the selection menu."
+          : "Unable to copy. Select the URL and try again.",
+    );
   }
 
   return (
@@ -82,6 +102,7 @@ export function InviteControl({ roomId }: { roomId: string }) {
             Share this link now
           </label>
           <input
+            ref={urlField}
             id="invite-url"
             type="url"
             readOnly
@@ -89,8 +110,22 @@ export function InviteControl({ roomId }: { roomId: string }) {
             onFocus={(event) => event.target.select()}
             className="mt-2 min-h-12 w-full rounded-xl border border-[#cddfd3] bg-[#fbfdfa] px-4 text-base"
           />
+          <button
+            type="button"
+            onClick={copy}
+            className="mt-3 min-h-11 rounded-xl border border-[#205545] px-5 py-2 font-semibold text-[#205545] focus-visible:outline-2 focus-visible:outline-offset-2"
+          >
+            Copy invite URL
+          </button>
+          <p
+            role="status"
+            aria-live="polite"
+            className="mt-2 min-h-5 text-sm text-[#397c61]"
+          >
+            {copyFeedback}
+          </p>
           <p className="mt-2 text-xs leading-5 text-[#6c8476]">
-            The link is shown only now. Select it to copy or share.
+            The link is shown only now. You can also select it to copy or share.
           </p>
         </div>
       )}

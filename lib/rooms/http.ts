@@ -6,6 +6,7 @@ import {
   createRoomInvite,
   getRoom,
   inspectInvite,
+  joinOwnerAsParticipant,
   joinRoomInvite,
   listRooms,
   RoomError,
@@ -99,6 +100,22 @@ export async function handleGetRoom(
     validateRoomId(roomId);
     const room = await getRoom(user.id, roomId, repository);
     return json({ room: { ...room, isOwner: room.ownerUserId === user.id } });
+  } catch (error) {
+    return failure(error);
+  }
+}
+
+export async function handleJoinOwnerParticipant(
+  request: NextRequest,
+  roomId: string,
+  sessions: SessionRepository,
+  repository: RoomRepository,
+) {
+  try {
+    const user = await currentUser(request, sessions);
+    if (!user) return json({ error: "Unauthorized" }, 401);
+    validateRoomId(roomId);
+    return json(await joinOwnerAsParticipant(user.id, roomId, repository));
   } catch (error) {
     return failure(error);
   }

@@ -45,6 +45,11 @@ export type JoinOutcome =
   | { kind: "joined"; roomId: string }
   | { kind: "invalid" | "expired" | "exhausted" };
 
+export type OwnerJoinOutcome =
+  | { kind: "joined"; roomId: string }
+  | { kind: "notFound" }
+  | { kind: "forbidden" };
+
 export interface RoomRepository {
   createRoom(input: {
     ownerUserId: string;
@@ -53,6 +58,10 @@ export interface RoomRepository {
   }): Promise<RoomRecord>;
   listRooms(userId: string): Promise<RoomSummary[]>;
   getRoom(roomId: string): Promise<RoomDetail | null>;
+  addOwnerParticipant(
+    roomId: string,
+    userId: string,
+  ): Promise<OwnerJoinOutcome>;
   createInvite(input: {
     roomId: string;
     createdBy: string;
@@ -216,6 +225,20 @@ export async function getRoom(
     throw new RoomError("NOT_FOUND", "Room not found");
   }
   return room;
+}
+
+export async function joinOwnerAsParticipant(
+  userId: string,
+  roomId: string,
+  repository: RoomRepository,
+) {
+  requireRoomId(roomId);
+  const result = await repository.addOwnerParticipant(roomId, userId);
+  if (result.kind === "notFound")
+    throw new RoomError("NOT_FOUND", "Room not found");
+  if (result.kind === "forbidden")
+    throw new RoomError("FORBIDDEN", "Only the room owner can join this way");
+  return { roomId: result.roomId };
 }
 
 export async function createRoomInvite(

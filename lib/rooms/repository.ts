@@ -101,6 +101,63 @@ export function createRoomRepository(db: Database): RoomRepository {
       return { ...room, participants };
     },
 
+    async addOwnerParticipant(roomId, userId) {
+      return db.transaction(async (tx) => {
+        const [room] = await tx
+          .select({
+            id: rooms.id,
+            ownerUserId: rooms.ownerUserId,
+            status: rooms.status,
+          })
+          .from(rooms)
+          .where(eq(rooms.id, roomId))
+          .for("update", { of: rooms });
+        if (!room || room.status !== "ACTIVE")
+          return { kind: "notFound" as const };
+        if (room.ownerUserId !== userId) return { kind: "forbidden" as const };
+
+        const [existing] = await tx
+          .select({ id: roomMembers.id, status: roomMembers.status })
+          .from(roomMembers)
+          .where(
+            and(eq(roomMembers.roomId, roomId), eq(roomMembers.userId, userId)),
+          )
+          .limit(1);
+        if (existing?.status === "ACTIVE")
+          return { kind: "joined" as const, roomId };
+
+        let membershipId: string | undefined;
+        if (existing) {
+          const [updated] = await tx
+            .update(roomMembers)
+            .set({ status: "ACTIVE", role: "MEMBER", joinedAt: new Date() })
+            .where(eq(roomMembers.id, existing.id))
+            .returning({ id: roomMembers.id });
+          membershipId = updated.id;
+        } else {
+          const [inserted] = await tx
+            .insert(roomMembers)
+            .values({ roomId, userId, role: "MEMBER" })
+            .onConflictDoNothing({
+              target: [roomMembers.roomId, roomMembers.userId],
+            })
+            .returning({ id: roomMembers.id });
+          membershipId = inserted?.id;
+        }
+        if (membershipId) {
+          await tx.insert(auditLog).values({
+            userId,
+            roomId,
+            action: "JOIN_ROOM",
+            entityType: "ROOM_MEMBER",
+            entityId: membershipId,
+            newValue: { role: "MEMBER", source: "OWNER_ACTION" },
+          });
+        }
+        return { kind: "joined" as const, roomId };
+      });
+    },
+
     async createInvite(input) {
       await db.transaction(async (tx) => {
         const [invite] = await tx

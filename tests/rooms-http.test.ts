@@ -11,6 +11,7 @@ import {
   handleGetRoom,
   handleInspectInvite,
   handleJoinInvite,
+  handleJoinOwnerParticipant,
   handleListRooms,
 } from "../lib/rooms/http";
 
@@ -77,6 +78,13 @@ function rooms(): RoomRepository & { members: Set<string> } {
             })),
           }
         : null;
+    },
+    async addOwnerParticipant(id, userId) {
+      if (!room || room.id !== id || room.status !== "ACTIVE")
+        return { kind: "notFound" };
+      if (room.ownerUserId !== userId) return { kind: "forbidden" };
+      members.add(userId);
+      return { kind: "joined", roomId: id };
     },
     async createInvite(input) {
       invite = {
@@ -153,6 +161,83 @@ describe("room HTTP flow", () => {
     expect((await listed.json()).rooms).toEqual([
       expect.objectContaining({ id: room.id, participantCount: 0 }),
     ]);
+  });
+
+  it("lets only the authenticated owner join as a participant without an invite", async () => {
+    const sessions = new MemorySessionRepository();
+    const repo = rooms();
+    const owner = await user(sessions, "0812345678", "Smart");
+    const stranger = await user(sessions, "0899999999", "Partner");
+    const created = await handleCreateRoom(
+      request("/api/rooms", {
+        method: "POST",
+        token: owner.token,
+        body: { name: "Together" },
+      }),
+      sessions,
+      repo,
+    );
+    const room = (await created.json()).room;
+    const path = `/api/rooms/${room.id}/join`;
+    expect(repo.members.size).toBe(0);
+    expect(
+      (
+        await handleJoinOwnerParticipant(
+          request(path, { method: "POST" }),
+          room.id,
+          sessions,
+          repo,
+        )
+      ).status,
+    ).toBe(401);
+    expect(
+      (
+        await handleJoinOwnerParticipant(
+          request(path, { method: "POST", token: stranger.token }),
+          room.id,
+          sessions,
+          repo,
+        )
+      ).status,
+    ).toBe(403);
+    const joined = await handleJoinOwnerParticipant(
+      request(path, { method: "POST", token: owner.token }),
+      room.id,
+      sessions,
+      repo,
+    );
+    expect(joined.status).toBe(200);
+    expect(await joined.json()).toEqual({ roomId: room.id });
+    expect(
+      (
+        await (
+          await handleGetRoom(
+            request(`/api/rooms/${room.id}`, { token: owner.token }),
+            room.id,
+            sessions,
+            repo,
+          )
+        ).json()
+      ).room.participants,
+    ).toEqual([
+      {
+        userId: owner.user.id,
+        displayName: owner.user.id,
+        role: "MEMBER",
+        status: "ACTIVE",
+      },
+    ]);
+    expect(
+      (
+        await handleJoinOwnerParticipant(
+          request(path, { method: "POST", token: owner.token }),
+          room.id,
+          sessions,
+          repo,
+        )
+      ).status,
+    ).toBe(200);
+    expect(repo.members.size).toBe(1);
   });
 
   it("requires ownership for invites and sends an authenticated join to room detail", async () => {
