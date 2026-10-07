@@ -1,6 +1,6 @@
 # SharedSchedule
 
-Mobile-first shared scheduling, built with Next.js App Router, TypeScript, Tailwind CSS, PostgreSQL, and Drizzle ORM. This repository contains **Milestone 4: Calendar Read Model**.
+Mobile-first shared scheduling, built with Next.js App Router, TypeScript, Tailwind CSS, PostgreSQL, and Drizzle ORM. This repository contains **Milestone 5: Event CRUD**.
 
 ## Requirements
 
@@ -76,7 +76,21 @@ The room page renders the current Asia/Bangkok month on the server. Previous and
 
 Work patterns and overrides are user-global and apply in every room where the user is an active participant. A date override wins over the weekday pattern; absence of both gives a null base schedule. Events are additional entries, including WORK plus OT on one date. A multi-day event remains one database row and appears on each intersecting day in the read model. Timed multi-day entries show their original continuous date/time span in the day sheet. Calendar dates and wall-clock times are returned as strings, without converting them through client timezones.
 
-The server uses a fixed set of room, participant, master-data, pattern, override, and overlapping-event queries. The event query restricts room, active participant IDs, date overlap, and nondeleted rows. Only metadata from the requested room enters the response; malformed foreign-room references receive safe display fallbacks. The calendar is read only in this milestone. Event CRUD begins in Milestone 5.
+The server uses a fixed set of room, participant, master-data, pattern, override, and overlapping-event queries. The event query restricts room, active participant IDs, date overlap, and nondeleted rows. Only metadata from the requested room enters the response; malformed foreign-room references receive safe display fallbacks.
+
+## Event CRUD
+
+Active calendar participants can add events from a selected day and edit or delete their own event cards. Room owners who have not joined as participants cannot create events. Weekly patterns and date overrides remain separate and cannot be changed from the event form. New rooms receive the nine default room statuses (WORK, OT, OFF, LEAVE, WFH, TRAVEL, PERSONAL, ACTIVITY, OTHER) in the same transaction as room creation while retaining zero participants and zero events. The `0001_default_room_statuses` data migration adds only missing status codes to existing rooms; it preserves customized status rows.
+
+| Method   | Route                       | Result                                        |
+| -------- | --------------------------- | --------------------------------------------- |
+| `POST`   | `/api/rooms/:roomId/events` | `201` with `{ event }`                        |
+| `PATCH`  | `/api/events/:eventId`      | `200` with `{ event }`                        |
+| `DELETE` | `/api/events/:eventId`      | `200` with `{ event }`, including `deletedAt` |
+
+All three routes use the session cookie, require active room membership, and return no-store responses. Creation assigns owner and creator from the session. Update and delete require event ownership; other active participants receive `403`, while unrelated users receive `404`. Statuses and selected master locations must belong to the event's room and be active when newly chosen. An unchanged historical inactive reference may remain on edit. A master location and custom text cannot be selected together.
+
+Dates are strict `YYYY-MM-DD` strings with inclusive spans. Timed events require strict local `HH:mm` start and end times; a same-day end must be later than its start. An overnight event uses two dates. All-day events clear both times and the end-time-plus flag. Delete sets `deleted_at` without removing the row. Create, changed update, and delete write audit snapshots in the same database transaction. A normalized no-op PATCH writes no audit row. After a successful mutation, the client refetches the displayed calendar month and keeps the selected day in view. If that refetch fails, the form shows a retry control without repeating the event write.
 
 To run PostgreSQL integration tests, provide `TEST_DATABASE_URL` for a **dedicated** database whose name contains `test`, then run `npm test`. The tests apply migrations and clean up their fixtures. Without `TEST_DATABASE_URL`, they are reported as skipped; unit, service, HTTP, and screen tests still run. No local database is needed for the production build.
 
@@ -84,7 +98,7 @@ Milestone 3 verification on 2026-10-06 after the owner participation and invite 
 
 ## Security note
 
-**Phone number lookup is not real authentication. Anyone who knows another user's phone number can impersonate them.** Room write routes validate the session and room owner authority on the server. Future event routes must also validate room membership and event ownership on the server.
+**Phone number lookup is not real authentication. Anyone who knows another user's phone number can impersonate them.** Room and event write routes validate session, membership, and relevant ownership on the server.
 
 Do not commit `.env.local`, production credentials, or session or invite tokens. Invite URLs grant room access to anyone who can establish a phone identity and should be shared only with intended participants. The repository only contains a sample development connection string.
 

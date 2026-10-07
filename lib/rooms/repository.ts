@@ -1,6 +1,14 @@
 import { and, count, eq, inArray, or } from "drizzle-orm";
 import { createDatabase, getDatabase } from "../db";
-import { auditLog, roomInvites, roomMembers, rooms, users } from "../db/schema";
+import {
+  auditLog,
+  roomInvites,
+  roomMembers,
+  rooms,
+  statusMaster,
+  users,
+} from "../db/schema";
+import { defaultStatusRows } from "./default-statuses";
 import {
   classifyInvite,
   type RoomRepository,
@@ -13,6 +21,7 @@ export function createRoomRepository(db: Database): RoomRepository {
     async createRoom(input) {
       return db.transaction(async (tx) => {
         const [room] = await tx.insert(rooms).values(input).returning();
+        await tx.insert(statusMaster).values(defaultStatusRows(room.id));
         await tx.insert(auditLog).values({
           userId: input.ownerUserId,
           roomId: room.id,

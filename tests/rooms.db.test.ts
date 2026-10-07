@@ -1,15 +1,18 @@
 import { randomInt } from "node:crypto";
 import { existsSync } from "node:fs";
 import { resolve } from "node:path";
-import { eq } from "drizzle-orm";
+import { readFileSync } from "node:fs";
+import { eq, sql } from "drizzle-orm";
 import { migrate } from "drizzle-orm/node-postgres/migrator";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import { createDatabase } from "../lib/db";
 import {
   auditLog,
+  events,
   roomInvites,
   roomMembers,
   rooms,
+  statusMaster,
   users,
 } from "../lib/db/schema";
 import { createRoomRepository } from "../lib/rooms/repository";
@@ -74,6 +77,28 @@ suite("room and invite PostgreSQL integration", () => {
         .from(roomMembers)
         .where(eq(roomMembers.roomId, room.id)),
     ).toHaveLength(0);
+    expect(
+      await database.db.select().from(events).where(eq(events.roomId, room.id)),
+    ).toHaveLength(0);
+    expect(
+      (
+        await database.db
+          .select({ code: statusMaster.code })
+          .from(statusMaster)
+          .where(eq(statusMaster.roomId, room.id))
+          .orderBy(statusMaster.sortOrder)
+      ).map((row) => row.code),
+    ).toEqual([
+      "WORK",
+      "OT",
+      "OFF",
+      "LEAVE",
+      "WFH",
+      "TRAVEL",
+      "PERSONAL",
+      "ACTIVITY",
+      "OTHER",
+    ]);
     expect(await listRooms(userIds[0], repo)).toEqual(
       expect.arrayContaining([
         expect.objectContaining({
@@ -114,6 +139,43 @@ suite("room and invite PostgreSQL integration", () => {
       .from(roomInvites)
       .where(eq(roomInvites.roomId, room.id));
     expect(storedInvite.usedCount).toBe(1);
+  });
+
+  it("backfills missing statuses twice without overwriting customized values", async () => {
+    const room = await createRoom(
+      userIds[0],
+      { name: "Backfill room" },
+      createRoomRepository(database.db),
+    );
+    roomIds.push(room.id);
+    await database.db
+      .delete(statusMaster)
+      .where(eq(statusMaster.roomId, room.id));
+    await database.db.insert(statusMaster).values({
+      roomId: room.id,
+      code: "WORK",
+      name: "My Work",
+      color: "#123456",
+      sortOrder: 47,
+      active: false,
+    });
+    const migration = readFileSync(
+      resolve("drizzle/0001_default_room_statuses.sql"),
+      "utf8",
+    );
+    await database.db.execute(sql.raw(migration));
+    await database.db.execute(sql.raw(migration));
+    const rows = await database.db
+      .select()
+      .from(statusMaster)
+      .where(eq(statusMaster.roomId, room.id));
+    expect(rows).toHaveLength(9);
+    expect(rows.find((row) => row.code === "WORK")).toMatchObject({
+      name: "My Work",
+      color: "#123456",
+      sortOrder: 47,
+      active: false,
+    });
   });
 
   it("allows only one of two concurrent joins to consume the final use", async () => {

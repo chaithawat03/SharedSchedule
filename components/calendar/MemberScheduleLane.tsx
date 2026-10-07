@@ -45,9 +45,13 @@ function BaseSchedule({ schedule }: { schedule: CalendarBaseSchedule | null }) {
 export function MemberScheduleLane({
   member,
   day,
+  currentUserId,
+  onEditEvent,
 }: {
   member: CalendarMonth["members"][number];
   day: CalendarMonth["days"][string]["users"][string];
+  currentUserId?: string;
+  onEditEvent?: (event: CalendarEvent) => void;
 }) {
   return (
     <section
@@ -87,6 +91,15 @@ export function MemberScheduleLane({
                 <p className="mt-1 whitespace-pre-wrap break-words text-sm">
                   {event.note}
                 </p>
+              )}
+              {event.ownerUserId === currentUserId && onEditEvent && (
+                <button
+                  type="button"
+                  onClick={() => onEditEvent(event)}
+                  className="mt-2 min-h-11 rounded-xl px-3 text-sm font-semibold text-[#276451]"
+                >
+                  Edit my event
+                </button>
               )}
             </li>
           ))}

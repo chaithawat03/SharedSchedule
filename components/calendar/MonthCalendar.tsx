@@ -53,6 +53,21 @@ export async function loadAdjacentCalendarMonth(
   return (await response.json()) as CalendarMonth;
 }
 
+export async function reloadDisplayedCalendarMonth(
+  model: CalendarMonth,
+  request: typeof fetch = fetch,
+): Promise<CalendarMonth> {
+  const response = await request(
+    `/api/rooms/${model.room.id}/calendar?year=${model.year}&month=${model.month}`,
+    { cache: "no-store" },
+  );
+  if (!response.ok)
+    throw new Error(
+      "Event saved, but the calendar could not refresh. Try changing months.",
+    );
+  return (await response.json()) as CalendarMonth;
+}
+
 export function MonthCalendar({
   initialModel,
 }: {
@@ -84,6 +99,22 @@ export function MonthCalendar({
       );
     } finally {
       setLoading(false);
+    }
+  }
+
+  async function refreshAfterMutation() {
+    try {
+      const refreshed = await reloadDisplayedCalendarMonth(model);
+      setView({ source: initialModel, model: refreshed });
+      setError(null);
+      return true;
+    } catch (cause) {
+      setError(
+        cause instanceof Error
+          ? cause.message
+          : "Unable to refresh the calendar",
+      );
+      return false;
     }
   }
 
@@ -163,6 +194,7 @@ export function MonthCalendar({
           date={selectedDate}
           model={model}
           onClose={() => setSelectedDate(null)}
+          onMutated={refreshAfterMutation}
         />
       )}
     </section>

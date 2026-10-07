@@ -176,7 +176,8 @@ describe("calendar UI", () => {
     expect(detail).toContain("17:20");
     expect(detail).toContain("19:40+");
     expect(detail).toContain("MCP");
-    expect(detail).not.toContain("Edit");
+    expect(detail).toContain("Edit my event");
+    expect(detail).not.toContain("Edit WORK");
   });
 
   it("shows all-day activity across dates and labels timed multi-day events as a span", () => {

@@ -1,5 +1,7 @@
 import { existsSync } from "node:fs";
+import { eq } from "drizzle-orm";
 import { createDatabase } from "../lib/db";
+import { defaultStatusRows } from "../lib/rooms/default-statuses";
 import {
   events,
   locationMaster,
@@ -26,17 +28,6 @@ const ids = {
   activityEvent: "60000000-0000-4000-8000-000000000003",
 } as const;
 
-const statusCodes = [
-  "WORK",
-  "OT",
-  "OFF",
-  "LEAVE",
-  "WFH",
-  "TRAVEL",
-  "PERSONAL",
-  "ACTIVITY",
-  "OTHER",
-] as const;
 const statusId = (index: number) =>
   `30000000-0000-4000-8000-${String(index + 1).padStart(12, "0")}`;
 
@@ -102,15 +93,25 @@ async function main() {
       await tx
         .insert(statusMaster)
         .values(
-          statusCodes.map((code, index) => ({
+          defaultStatusRows(ids.room).map((status, index) => ({
             id: statusId(index),
-            roomId: ids.room,
-            code,
-            name: code,
-            sortOrder: index,
+            ...status,
           })),
         )
         .onConflictDoNothing();
+
+      const roomStatuses = await tx
+        .select({ id: statusMaster.id, code: statusMaster.code })
+        .from(statusMaster)
+        .where(eq(statusMaster.roomId, ids.room));
+      const statusIds = new Map(
+        roomStatuses.map((status) => [status.code, status.id]),
+      );
+      const requiredStatus = (code: string) => {
+        const id = statusIds.get(code);
+        if (!id) throw new Error(`Missing seed status ${code}`);
+        return id;
+      };
 
       await tx
         .insert(locationMaster)
@@ -152,7 +153,7 @@ async function main() {
             roomId: ids.room,
             ownerUserId: ids.smart,
             createdBy: ids.smart,
-            statusId: statusId(1),
+            statusId: requiredStatus("OT"),
             startDate: "2026-10-12",
             endDate: "2026-10-12",
             startTime: "17:20",
@@ -165,7 +166,7 @@ async function main() {
             roomId: ids.room,
             ownerUserId: ids.partner,
             createdBy: ids.partner,
-            statusId: statusId(2),
+            statusId: requiredStatus("OFF"),
             startDate: "2026-10-08",
             endDate: "2026-10-08",
             allDay: true,
@@ -175,7 +176,7 @@ async function main() {
             roomId: ids.room,
             ownerUserId: ids.smart,
             createdBy: ids.smart,
-            statusId: statusId(7),
+            statusId: requiredStatus("ACTIVITY"),
             title: "Phu Soi Dao",
             startDate: "2026-12-27",
             endDate: "2026-12-29",
