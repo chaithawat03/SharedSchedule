@@ -44,6 +44,7 @@ type Props = {
   locations: CalendarMonth["locations"];
   onCancel: () => void;
   onSaved: () => Promise<boolean>;
+  onChoicesStale?: () => Promise<boolean>;
 };
 
 const inputClass =
@@ -58,6 +59,7 @@ export function EventForm({
   locations,
   onCancel,
   onSaved,
+  onChoicesStale,
 }: Props) {
   const [form, setForm] = useState<FormState>(() => {
     const initial = initialEventForm(selectedDate, event);
@@ -67,10 +69,24 @@ export function EventForm({
   const [saved, setSaved] = useState(false);
   const [confirmDelete, setConfirmDelete] = useState(false);
   const [error, setError] = useState("");
+  const [rejectedStatusId, setRejectedStatusId] = useState("");
+  const [rejectedLocationId, setRejectedLocationId] = useState("");
   const set = <K extends keyof FormState>(key: K, value: FormState[K]) =>
     setForm((current) => ({ ...current, [key]: value }));
   const activeStatusIds = new Set(statuses.map((status) => status.id));
   const activeLocationIds = new Set(locations.map((location) => location.id));
+  const staleStatus = Boolean(
+    form.statusId &&
+    (form.statusId === rejectedStatusId ||
+      (!activeStatusIds.has(form.statusId) &&
+        form.statusId !== event?.statusId)),
+  );
+  const staleLocation = Boolean(
+    form.locationId &&
+    (form.locationId === rejectedLocationId ||
+      (!activeLocationIds.has(form.locationId) &&
+        form.locationId !== event?.locationId)),
+  );
 
   async function refreshSavedEvent() {
     try {
@@ -128,8 +144,25 @@ export function EventForm({
         body,
       });
       if (!response.ok) {
-        const result = (await response.json()) as { error?: string };
+        const result = (await response.json()) as {
+          error?: string;
+          code?: string;
+        };
         setError(result.error ?? "Unable to save event");
+        if (
+          result.code === "INVALID_INPUT" &&
+          /active (status|location)/i.test(result.error ?? "")
+        ) {
+          if (/active status/i.test(result.error ?? ""))
+            setRejectedStatusId(form.statusId);
+          if (/active location/i.test(result.error ?? ""))
+            setRejectedLocationId(form.locationId);
+          try {
+            await onChoicesStale?.();
+          } catch {
+            /* Keep the submitted fields and server error. */
+          }
+        }
         return;
       }
       setSaved(true);
@@ -173,13 +206,20 @@ export function EventForm({
             onChange={(e) => set("statusId", e.target.value)}
           >
             {!activeStatusIds.has(form.statusId) && form.statusId && (
-              <option value={form.statusId}>
-                {event?.statusName ?? "Previous status"} (inactive)
+              <option value={form.statusId} disabled={staleStatus}>
+                {form.statusId === event?.statusId
+                  ? event?.statusName
+                  : "Unavailable status"}{" "}
+                (inactive)
               </option>
             )}
             {!form.statusId && <option value="">Choose status</option>}
             {statuses.map((status) => (
-              <option key={status.id} value={status.id}>
+              <option
+                key={status.id}
+                value={status.id}
+                disabled={status.id === rejectedStatusId}
+              >
                 {status.name}
               </option>
             ))}
@@ -275,12 +315,19 @@ export function EventForm({
           >
             <option value="">None or custom</option>
             {!activeLocationIds.has(form.locationId) && form.locationId && (
-              <option value={form.locationId}>
-                {event?.locationName ?? "Previous location"} (inactive)
+              <option value={form.locationId} disabled={staleLocation}>
+                {form.locationId === event?.locationId
+                  ? event?.locationName
+                  : "Unavailable location"}{" "}
+                (inactive)
               </option>
             )}
             {locations.map((location) => (
-              <option key={location.id} value={location.id}>
+              <option
+                key={location.id}
+                value={location.id}
+                disabled={location.id === rejectedLocationId}
+              >
                 {location.name}
               </option>
             ))}
@@ -331,7 +378,7 @@ export function EventForm({
         ) : (
           <button
             type="submit"
-            disabled={pending || !form.statusId}
+            disabled={pending || !form.statusId || staleStatus || staleLocation}
             className="min-h-11 w-full rounded-xl bg-[#205545] px-4 font-semibold text-white disabled:opacity-50"
           >
             {pending ? "Saving…" : "Save event"}

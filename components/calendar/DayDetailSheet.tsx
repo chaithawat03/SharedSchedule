@@ -11,11 +11,13 @@ export function DayDetailSheet({
   model,
   onClose,
   onMutated,
+  onChoicesStale,
 }: {
   date: string;
   model: CalendarMonth;
   onClose: () => void;
   onMutated?: () => Promise<boolean>;
+  onChoicesStale?: () => Promise<boolean>;
 }) {
   const dialogRef = useRef<HTMLDialogElement>(null);
   const closeButtonRef = useRef<HTMLButtonElement>(null);
@@ -75,6 +77,7 @@ export function DayDetailSheet({
                 if (refreshed) setEditing(null);
                 return refreshed;
               }}
+              onChoicesStale={onChoicesStale}
             />
           ) : (
             <>

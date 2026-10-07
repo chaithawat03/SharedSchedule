@@ -273,6 +273,7 @@ export function MonthCalendar({
           model={model}
           onClose={() => setSelectedDate(null)}
           onMutated={refreshAfterMutation}
+          onChoicesStale={refreshAfterMutation}
         />
       )}
       {selectionMode && !bulkEditing && (
@@ -336,6 +337,7 @@ export function MonthCalendar({
           locations={model.locations}
           onClose={() => setBulkEditing(false)}
           onCreated={refreshAfterBulkCreate}
+          onChoicesStale={refreshAfterMutation}
         />
       )}
       {workEditing && (

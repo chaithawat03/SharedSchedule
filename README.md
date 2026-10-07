@@ -1,6 +1,6 @@
 # SharedSchedule
 
-Mobile-first shared scheduling, built with Next.js App Router, TypeScript, Tailwind CSS, PostgreSQL, and Drizzle ORM. This repository contains **Milestone 7: Working Calendar**.
+Mobile-first shared scheduling, built with Next.js App Router, TypeScript, Tailwind CSS, PostgreSQL, and Drizzle ORM. This repository contains **Milestone 8: Room Status and Location Masters**.
 
 ## Requirements
 
@@ -96,6 +96,34 @@ Dates are strict `YYYY-MM-DD` strings with inclusive spans. Timed events require
 Bulk Edit is **Add to selected dates**: an active participant selects 1–31 distinct days in one displayed month, then submits `{ "dates": ["2026-10-04", "2026-10-08"], "event": { "statusId": "...", "allDay": true, "title": null, "startTime": null, "endTime": null, "endTimeOpen": false, "locationId": null, "locationText": null, "note": null } }`. The server creates one separate single-day event per date and assigns room, owner, creator, and both dates itself. Template system, ownership, and date fields are rejected. Timed bulk events require an end time later than the start time on each date; use the individual editor for overnight or multi-day events. OFF events are additive and leave any base WORK schedule visible. Bulk Edit never writes work patterns or overrides.
 
 The bulk endpoint requires an active room and active membership, including for the room owner. It sorts dates before writing or responding. An active, nondeleted event for the same room, owner, date, and every normalized event-domain field is an exact duplicate; any exact match returns `409` with `code: "DUPLICATE_EVENT"` and sorted `conflictDates`, and creates no events or audit rows. Different event details on the same date remain valid. One PostgreSQL transaction locks the room row `FOR UPDATE`, checks membership and room-scoped active references, checks duplicates, inserts all events, and inserts one `CREATE_EVENT` audit row for each. The room lock serializes **bulk submissions for the same room** through duplicate detection; it does not extend this guarantee to simultaneous individual event creation. No event-equality unique constraint is added. After a successful bulk POST, the UI refetches the currently displayed month; if the GET fails, Retry calendar refresh repeats only the GET.
+
+## Room status and location masters
+
+The owner of an active room manages its statuses and locations at `/room/:roomId/settings`, including when the owner has not joined as a calendar participant. Administrative authority comes only from `rooms.owner_user_id`; `room_members.role` does not grant it. Active participants may read active choices. Unrelated users cannot read them. The settings page and every write endpoint enforce this on the server.
+
+| Method   | Route                                            | Access                      | Behavior                                         |
+| -------- | ------------------------------------------------ | --------------------------- | ------------------------------------------------ |
+| `GET`    | `/api/rooms/:roomId/statuses`                    | Owner or active participant | Active status choices                            |
+| `GET`    | `/api/rooms/:roomId/statuses?includeInactive=1`  | Owner                       | All statuses                                     |
+| `POST`   | `/api/rooms/:roomId/statuses`                    | Owner                       | Create active custom status                      |
+| `PATCH`  | `/api/rooms/:roomId/statuses/:statusId`          | Owner                       | Edit display fields or active state              |
+| `DELETE` | `/api/rooms/:roomId/statuses/:statusId`          | Owner                       | Deactivate custom status; built-ins return `409` |
+| `PUT`    | `/api/rooms/:roomId/statuses/order`              | Owner                       | Reorder every active status atomically           |
+| `GET`    | `/api/rooms/:roomId/locations`                   | Owner or active participant | Active location choices                          |
+| `GET`    | `/api/rooms/:roomId/locations?includeInactive=1` | Owner                       | All locations                                    |
+| `POST`   | `/api/rooms/:roomId/locations`                   | Owner                       | Create active location                           |
+| `PATCH`  | `/api/rooms/:roomId/locations/:locationId`       | Owner                       | Rename or change active state                    |
+| `DELETE` | `/api/rooms/:roomId/locations/:locationId`       | Owner                       | Deactivate location                              |
+
+All responses use `Cache-Control: no-store`. A missing session returns `401`; an active participant attempting management returns `403`; an inaccessible room or a foreign-room master ID returns `404`. Invalid input returns `400`, and duplicates, protected built-ins, or last-active-status violations return `409`.
+
+Custom status creation requires `code` and `name`, and accepts optional `icon` and `color`. Codes are normalized to uppercase ASCII and must match `^[A-Z][A-Z0-9_]{0,47}$`; codes never change after creation. Status names are trimmed, 1–100 characters, and unique without regard to case within the room, including inactive rows. Locations are trimmed, 1–160 characters, and follow the same duplicate-name rule. Colors are null or strict `#RRGGBB`; icons are null or a supported token from the settings picker. Client-supplied IDs, room IDs, active state on creation, timestamps, and sort order are rejected.
+
+The nine built-in codes remain permanent room-status identities. Owners may rename their display names, change icon or color, reorder, deactivate, and reactivate them, but cannot change their codes or call `DELETE` on them. `PATCH { "active": false }` also works for built-ins while the room retains at least one active status. New and reactivated statuses append after the current active maximum sort order; manual reorder assigns `0..N-1` in one transaction. Active locations sort alphabetically; locations have no manual order. Repeated deactivation and unchanged patches make no write or audit entry.
+
+Deactivation never physically deletes a master or changes an event. Existing events retain references to inactive statuses and locations and remain readable; new events cannot choose inactive rows. Editing another field on an existing event may retain its unchanged inactive reference. Master names are **not** snapshotted into events: renaming a status or location changes the name displayed by older events that reference it. The event and bulk editors refresh active choices after a stale-reference rejection while preserving unsaved fields. Bulk Edit still adds one event per selected date and does not modify work patterns or overrides.
+
+Each owner mutation locks the room row before target master rows, rechecks ownership and room state, and writes its audit in the same transaction. The room lock serializes case-insensitive duplicate checks. Status reorder writes one `REORDER_STATUSES` audit row with before/after order; no-op reorder writes nothing. Room status WORK/OFF is independent of the user-global Personal Work Calendar WORK/OFF base schedules, including when a room status is deactivated.
 
 ## Personal work calendar
 

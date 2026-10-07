@@ -85,7 +85,14 @@ export function RoomDetailView({
             ) && <JoinParticipantButton roomId={room.id} />}
         </section>
         {isOwner && (
-          <div className="mt-5">
+          <div className="mt-5 space-y-4">
+            <Link
+              href={`/room/${room.id}/settings`}
+              prefetch={false}
+              className="flex min-h-11 items-center justify-center rounded-xl border border-[#bfd4c6] bg-white px-4 font-semibold text-[#205545]"
+            >
+              Room settings
+            </Link>
             <InviteControl roomId={room.id} />
           </div>
         )}

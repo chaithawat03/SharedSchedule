@@ -10,6 +10,7 @@ type Props = {
   locations: CalendarMonth["locations"];
   onClose: () => void;
   onCreated: () => Promise<boolean>;
+  onChoicesStale?: () => Promise<boolean>;
 };
 
 const inputClass =
@@ -23,6 +24,7 @@ export function BulkEventEditor({
   locations,
   onClose,
   onCreated,
+  onChoicesStale,
 }: Props) {
   const dialogRef = useRef<HTMLDialogElement>(null);
   const [statusId, setStatusId] = useState(statuses[0]?.id ?? "");
@@ -37,7 +39,17 @@ export function BulkEventEditor({
   const [pending, setPending] = useState(false);
   const [created, setCreated] = useState(false);
   const [error, setError] = useState("");
+  const [rejectedStatusId, setRejectedStatusId] = useState("");
+  const [rejectedLocationId, setRejectedLocationId] = useState("");
   const selectedStatus = statuses.find((status) => status.id === statusId);
+  const staleStatus = Boolean(
+    statusId && (!selectedStatus || statusId === rejectedStatusId),
+  );
+  const staleLocation = Boolean(
+    locationId &&
+    (!locations.some((location) => location.id === locationId) ||
+      locationId === rejectedLocationId),
+  );
 
   useEffect(() => {
     const opener = document.activeElement;
@@ -91,6 +103,7 @@ export function BulkEventEditor({
       if (!response.ok) {
         const result = (await response.json()) as {
           error?: string;
+          code?: string;
           conflictDates?: string[];
         };
         setError(
@@ -98,6 +111,20 @@ export function BulkEventEditor({
             ? `${result.error ?? "Matching events already exist"}: ${result.conflictDates.join(", ")}`
             : (result.error ?? "Unable to add events"),
         );
+        if (
+          result.code === "INVALID_INPUT" &&
+          /active (status|location)/i.test(result.error ?? "")
+        ) {
+          if (/active status/i.test(result.error ?? ""))
+            setRejectedStatusId(statusId);
+          if (/active location/i.test(result.error ?? ""))
+            setRejectedLocationId(locationId);
+          try {
+            await onChoicesStale?.();
+          } catch {
+            /* Keep the submitted fields and server error. */
+          }
+        }
         return;
       }
       setCreated(true);
@@ -172,9 +199,18 @@ export function BulkEventEditor({
                   value={statusId}
                   onChange={(event) => setStatusId(event.target.value)}
                 >
+                  {staleStatus && (
+                    <option value={statusId} disabled>
+                      Unavailable status (inactive)
+                    </option>
+                  )}
                   {!statusId && <option value="">Choose status</option>}
                   {statuses.map((status) => (
-                    <option key={status.id} value={status.id}>
+                    <option
+                      key={status.id}
+                      value={status.id}
+                      disabled={status.id === rejectedStatusId}
+                    >
                       {status.name}
                     </option>
                   ))}
@@ -253,9 +289,18 @@ export function BulkEventEditor({
                     setLocationText("");
                   }}
                 >
+                  {staleLocation && (
+                    <option value={locationId} disabled>
+                      Unavailable location (inactive)
+                    </option>
+                  )}
                   <option value="">None or custom</option>
                   {locations.map((location) => (
-                    <option key={location.id} value={location.id}>
+                    <option
+                      key={location.id}
+                      value={location.id}
+                      disabled={location.id === rejectedLocationId}
+                    >
                       {location.name}
                     </option>
                   ))}
@@ -303,7 +348,9 @@ export function BulkEventEditor({
               ) : (
                 <button
                   type="submit"
-                  disabled={pending || !statusId}
+                  disabled={
+                    pending || !statusId || staleStatus || staleLocation
+                  }
                   className="min-h-11 w-full rounded-xl bg-[#205545] px-4 font-semibold text-white disabled:opacity-50"
                 >
                   {pending ? "Adding…" : "Add to selected dates"}
