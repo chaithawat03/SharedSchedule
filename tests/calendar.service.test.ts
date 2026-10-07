@@ -109,7 +109,7 @@ function fixture() {
       endTime: null,
     },
   ];
-  const overrides = [
+  const overrides: MonthRows["overrides"] = [
     {
       userId: owner,
       date: "2026-10-12",
@@ -193,6 +193,67 @@ function fixture() {
 }
 
 describe("monthly calendar read model", () => {
+  it("makes only one factory Saturday WORK and leaves adjacent Saturdays and OFF events separate", async () => {
+    const data = fixture();
+    const offStatus = "30000000-0000-4000-8000-000000000099";
+    data.statuses.push({
+      id: offStatus,
+      roomId,
+      code: "OFF",
+      name: "Off",
+      icon: null,
+      color: "#777",
+      sortOrder: 4,
+      active: true,
+    });
+    data.patterns.push({
+      userId: owner,
+      weekday: 6,
+      working: false,
+      startTime: null,
+      endTime: null,
+    });
+    data.overrides.splice(0, data.overrides.length, {
+      userId: owner,
+      date: "2026-10-10",
+      type: "WORK",
+      startTime: "07:40:00",
+      endTime: "17:00:00",
+      note: "Factory working Saturday",
+    });
+    const offEvent: MonthRows["events"][number] = {
+      ...data.events[0],
+      id: "60000000-0000-4000-8000-000000000099",
+      startDate: "2026-10-10",
+      endDate: "2026-10-10",
+      statusId: offStatus,
+      startTime: null,
+      endTime: null,
+      allDay: true,
+    };
+    data.events.push(offEvent);
+    const month = await getCalendarMonth(
+      { id: owner, displayName: "Smart" },
+      roomId,
+      2026,
+      10,
+      data.repository,
+      now,
+    );
+    expect(month.days["2026-10-03"].users[owner].baseSchedule?.code).toBe(
+      "OFF",
+    );
+    expect(month.days["2026-10-10"].users[owner].baseSchedule).toMatchObject({
+      code: "WORK",
+      source: "OVERRIDE",
+      startTime: "07:40",
+    });
+    expect(month.days["2026-10-17"].users[owner].baseSchedule?.code).toBe(
+      "OFF",
+    );
+    expect(month.days["2026-10-10"].users[owner].events).toHaveLength(1);
+    expect(month.days["2026-10-10"].users[owner].events[0].code).toBe("OFF");
+  });
   it("orders the current participant first and combines override with additive OT", async () => {
     const data = fixture();
     const month = await getCalendarMonth(

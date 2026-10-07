@@ -173,6 +173,8 @@ describe("calendar UI", () => {
     expect(detail).toContain("Smart");
     expect(detail).toContain("Partner");
     expect(detail).toContain("07:40");
+    expect(detail).toContain("Base schedule");
+    expect(detail).toContain(">Events<");
     expect(detail).toContain("17:20");
     expect(detail).toContain("19:40+");
     expect(detail).toContain("MCP");

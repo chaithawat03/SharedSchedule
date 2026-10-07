@@ -6,6 +6,7 @@ import type { CalendarMonth } from "../../types/calendar";
 import { CalendarDay } from "./CalendarDay";
 import { DayDetailSheet } from "./DayDetailSheet";
 import { BulkEventEditor } from "../events/BulkEventEditor";
+import { WorkCalendarEditor } from "../work-schedule/WorkCalendarEditor";
 
 const monthNames = [
   "January",
@@ -84,6 +85,8 @@ export function MonthCalendar({
   const [selectedDates, setSelectedDates] = useState<string[]>([]);
   const [bulkEditing, setBulkEditing] = useState(false);
   const [bulkRefreshPending, setBulkRefreshPending] = useState(false);
+  const [workEditing, setWorkEditing] = useState(false);
+  const [workRefreshPending, setWorkRefreshPending] = useState(false);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
@@ -121,6 +124,14 @@ export function MonthCalendar({
       );
       return false;
     }
+  }
+
+  async function refreshAfterWorkChange() {
+    const refreshed = await refreshAfterMutation();
+    setWorkRefreshPending(!refreshed);
+    if (!refreshed)
+      setError("Work calendar saved, but the room calendar could not refresh.");
+    return refreshed;
   }
 
   function chooseDate(date: string) {
@@ -194,6 +205,23 @@ export function MonthCalendar({
         <p role="alert" className="px-1 pb-3 text-sm text-[#a02f25]">
           {error}
         </p>
+      )}
+      <button
+        type="button"
+        onClick={() => setWorkEditing(true)}
+        disabled={loading || selectionMode}
+        className="mb-3 mr-2 min-h-11 rounded-xl border border-[#bfd4c6] bg-white px-4 font-semibold text-[#205545] disabled:opacity-50"
+      >
+        Work calendar
+      </button>
+      {workRefreshPending && (
+        <button
+          type="button"
+          onClick={() => void refreshAfterWorkChange()}
+          className="mb-3 min-h-11 rounded-xl bg-[#205545] px-4 font-semibold text-white"
+        >
+          Retry calendar refresh
+        </button>
       )}
       {canSelect && !selectionMode && (
         <button
@@ -308,6 +336,14 @@ export function MonthCalendar({
           locations={model.locations}
           onClose={() => setBulkEditing(false)}
           onCreated={refreshAfterBulkCreate}
+        />
+      )}
+      {workEditing && (
+        <WorkCalendarEditor
+          initialYear={model.year}
+          initialMonth={model.month}
+          onClose={() => setWorkEditing(false)}
+          onChanged={refreshAfterWorkChange}
         />
       )}
     </section>

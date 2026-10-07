@@ -30,6 +30,12 @@ export function RoomListView({
             Open a room to see its participants or share an invite.
           </p>
         </div>
+        <Link
+          href="/work-calendar"
+          className="mt-6 flex min-h-12 items-center justify-center rounded-xl border border-[#bfd4c6] bg-white px-4 font-semibold text-[#205545]"
+        >
+          Work calendar
+        </Link>
         <div className="mt-8 grid gap-3" aria-label="Rooms">
           {rooms.length === 0 ? (
             <div className="rounded-3xl border border-dashed border-[#cbded2] bg-white p-6">

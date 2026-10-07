@@ -27,6 +27,7 @@ describe("room screens", () => {
     );
     expect(html).toContain("Create a room");
     expect(html).toContain("No rooms yet");
+    expect(html).toContain('href="/work-calendar"');
   });
 
   it("shows each room with its participant count", () => {

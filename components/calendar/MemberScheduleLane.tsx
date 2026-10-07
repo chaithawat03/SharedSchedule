@@ -67,9 +67,15 @@ export function MemberScheduleLane({
         </span>
         <span className="break-words">{member.displayName}</span>
       </h3>
+      <h4 className="mb-2 text-xs font-semibold uppercase tracking-wider text-[#567269]">
+        Base schedule
+      </h4>
       <BaseSchedule schedule={day.baseSchedule} />
+      <h4 className="mb-2 mt-4 text-xs font-semibold uppercase tracking-wider text-[#567269]">
+        Events
+      </h4>
       {day.events.length > 0 && (
-        <ul className="mt-3 space-y-2">
+        <ul className="space-y-2">
           {day.events.map((event) => (
             <li
               key={event.eventId}
@@ -104,6 +110,9 @@ export function MemberScheduleLane({
             </li>
           ))}
         </ul>
+      )}
+      {day.events.length === 0 && (
+        <p className="text-sm text-[#6c8476]">No room events</p>
       )}
     </section>
   );

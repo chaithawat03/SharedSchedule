@@ -1,6 +1,6 @@
 # SharedSchedule
 
-Mobile-first shared scheduling, built with Next.js App Router, TypeScript, Tailwind CSS, PostgreSQL, and Drizzle ORM. This repository contains **Milestone 6: Bulk Edit**.
+Mobile-first shared scheduling, built with Next.js App Router, TypeScript, Tailwind CSS, PostgreSQL, and Drizzle ORM. This repository contains **Milestone 7: Working Calendar**.
 
 ## Requirements
 
@@ -96,6 +96,23 @@ Dates are strict `YYYY-MM-DD` strings with inclusive spans. Timed events require
 Bulk Edit is **Add to selected dates**: an active participant selects 1–31 distinct days in one displayed month, then submits `{ "dates": ["2026-10-04", "2026-10-08"], "event": { "statusId": "...", "allDay": true, "title": null, "startTime": null, "endTime": null, "endTimeOpen": false, "locationId": null, "locationText": null, "note": null } }`. The server creates one separate single-day event per date and assigns room, owner, creator, and both dates itself. Template system, ownership, and date fields are rejected. Timed bulk events require an end time later than the start time on each date; use the individual editor for overnight or multi-day events. OFF events are additive and leave any base WORK schedule visible. Bulk Edit never writes work patterns or overrides.
 
 The bulk endpoint requires an active room and active membership, including for the room owner. It sorts dates before writing or responding. An active, nondeleted event for the same room, owner, date, and every normalized event-domain field is an exact duplicate; any exact match returns `409` with `code: "DUPLICATE_EVENT"` and sorted `conflictDates`, and creates no events or audit rows. Different event details on the same date remain valid. One PostgreSQL transaction locks the room row `FOR UPDATE`, checks membership and room-scoped active references, checks duplicates, inserts all events, and inserts one `CREATE_EVENT` audit row for each. The room lock serializes **bulk submissions for the same room** through duplicate detection; it does not extend this guarantee to simultaneous individual event creation. No event-equality unique constraint is added. After a successful bulk POST, the UI refetches the currently displayed month; if the GET fails, Retry calendar refresh repeats only the GET.
+
+## Personal work calendar
+
+`/work-calendar` is available to any signed-in user, including someone with no rooms. The room calendar also opens the editor without leaving the displayed month. Work patterns and date overrides are user-global: the same resolved base schedule appears in every room where the user is an active participant. A nonparticipant owner has no lane. Room events remain separate and additive, including OFF events created through Bulk Edit.
+
+| Method   | Route                                      | Result                                                         |
+| -------- | ------------------------------------------ | -------------------------------------------------------------- |
+| `GET`    | `/api/me/work-pattern`                     | Seven ordered weekdays, with `NONE` for absent rows            |
+| `PUT`    | `/api/me/work-pattern`                     | Atomic seven-day diff of `NONE`, `WORK`, and `OFF`             |
+| `GET`    | `/api/me/work-overrides?year=YYYY&month=M` | Signed-in user's date-ordered monthly exceptions               |
+| `POST`   | `/api/me/work-overrides`                   | Create one WORK or OFF exception; duplicate date returns `409` |
+| `PATCH`  | `/api/me/work-overrides/:id`               | Change type, times, or note; date stays fixed                  |
+| `DELETE` | `/api/me/work-overrides/:id`               | Physically remove the exception and reveal the weekly pattern  |
+
+`PUT` accepts `{ "days": [{ "weekday": 1, "state": "WORK", "startTime": "07:40", "endTime": "17:00" }, ...] }` with each weekday 1–7 exactly once. `NONE` deletes that weekday row; `OFF` stores a row with null times. A normalized no-op preserves row IDs and timestamps. The transaction locks the user's row, writes only changed weekdays, and audits each actual change. Override PATCH and DELETE lock the owned override row. Create relies on the `(user_id, date)` unique constraint as final duplicate protection. Work times remain local `HH:mm`; WORK requires an end later than its start and does not support overnight base shifts. All work-schedule audits use `room_id = null` and share the mutation transaction.
+
+A factory working Saturday is a single WORK date override. It changes only that date's base schedule; neighboring Saturdays retain their weekly state. The editor offers times only from the selected date's own WORK weekday pattern. After an edit opened from a room calendar, the client refetches that displayed room/month. If the GET fails, retry repeats only the GET.
 
 To run PostgreSQL integration tests, provide `TEST_DATABASE_URL` for a **dedicated** database whose name contains `test`, then run `npm test`. The tests apply migrations and clean up their fixtures. Without `TEST_DATABASE_URL`, they are reported as skipped; unit, service, HTTP, and screen tests still run. No local database is needed for the production build.
 
