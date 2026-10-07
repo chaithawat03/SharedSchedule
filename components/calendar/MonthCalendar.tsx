@@ -5,6 +5,7 @@ import { shiftMonth, weekdayMondayFirst } from "../../lib/calendar/date";
 import type { CalendarMonth } from "../../types/calendar";
 import { CalendarDay } from "./CalendarDay";
 import { DayDetailSheet } from "./DayDetailSheet";
+import { BulkEventEditor } from "../events/BulkEventEditor";
 
 const monthNames = [
   "January",
@@ -79,11 +80,15 @@ export function MonthCalendar({
   });
   const model = visibleCalendarModel(view, initialModel);
   const [selectedDate, setSelectedDate] = useState<string | null>(null);
+  const [selectionMode, setSelectionMode] = useState(false);
+  const [selectedDates, setSelectedDates] = useState<string[]>([]);
+  const [bulkEditing, setBulkEditing] = useState(false);
+  const [bulkRefreshPending, setBulkRefreshPending] = useState(false);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
   async function navigate(delta: number) {
-    if (loading) return;
+    if (loading || selectionMode) return;
     setLoading(true);
     setError(null);
     setSelectedDate(null);
@@ -118,7 +123,35 @@ export function MonthCalendar({
     }
   }
 
+  function chooseDate(date: string) {
+    if (!selectionMode) {
+      setSelectedDate(date);
+      return;
+    }
+    if (bulkRefreshPending) return;
+    setSelectedDates((current) =>
+      current.includes(date)
+        ? current.filter((selected) => selected !== date)
+        : [...current, date].sort(),
+    );
+  }
+
+  async function refreshAfterBulkCreate() {
+    setBulkRefreshPending(true);
+    const refreshed = await refreshAfterMutation();
+    if (refreshed) {
+      setBulkRefreshPending(false);
+      setSelectedDates([]);
+      setSelectionMode(false);
+      setBulkEditing(false);
+    }
+    return refreshed;
+  }
+
   const dates = Object.keys(model.days).sort();
+  const canSelect = model.members.some(
+    (member) => member.userId === model.currentUser.id,
+  );
   const leadingDays = weekdayMondayFirst(model.monthStart) - 1;
   return (
     <section
@@ -130,7 +163,7 @@ export function MonthCalendar({
           type="button"
           aria-label="Previous month"
           onClick={() => void navigate(-1)}
-          disabled={loading}
+          disabled={loading || selectionMode}
           className="min-h-11 min-w-11 rounded-full bg-white text-xl font-semibold text-[#276451] disabled:opacity-50"
         >
           ‹
@@ -145,7 +178,7 @@ export function MonthCalendar({
           type="button"
           aria-label="Next month"
           onClick={() => void navigate(1)}
-          disabled={loading}
+          disabled={loading || selectionMode}
           className="min-h-11 min-w-11 rounded-full bg-white text-xl font-semibold text-[#276451] disabled:opacity-50"
         >
           ›
@@ -161,6 +194,21 @@ export function MonthCalendar({
         <p role="alert" className="px-1 pb-3 text-sm text-[#a02f25]">
           {error}
         </p>
+      )}
+      {canSelect && !selectionMode && (
+        <button
+          type="button"
+          disabled={loading}
+          onClick={() => {
+            if (loading) return;
+            setSelectedDate(null);
+            setSelectedDates([]);
+            setSelectionMode(true);
+          }}
+          className="mb-3 min-h-11 rounded-xl bg-[#205545] px-4 font-semibold text-white"
+        >
+          Select dates
+        </button>
       )}
       <div className="grid grid-cols-7 gap-px">
         {weekdays.map((day) => (
@@ -180,7 +228,9 @@ export function MonthCalendar({
             key={date}
             date={date}
             model={model}
-            onOpen={setSelectedDate}
+            onOpen={chooseDate}
+            selectionMode={selectionMode}
+            selected={selectedDates.includes(date)}
           />
         ))}
       </div>
@@ -195,6 +245,69 @@ export function MonthCalendar({
           model={model}
           onClose={() => setSelectedDate(null)}
           onMutated={refreshAfterMutation}
+        />
+      )}
+      {selectionMode && !bulkEditing && (
+        <div className="sticky bottom-0 z-20 -mx-0.5 mt-3 flex flex-wrap items-center gap-2 rounded-t-2xl border border-[#cddfd3] bg-[#f4f8f3] px-3 pb-[calc(0.75rem+env(safe-area-inset-bottom))] pt-3 shadow-lg sm:mx-0 sm:rounded-2xl">
+          {bulkRefreshPending ? (
+            <>
+              <span className="mr-auto text-sm font-semibold text-[#18332f]">
+                Events added. Calendar needs refresh.
+              </span>
+              <button
+                type="button"
+                onClick={() => void refreshAfterBulkCreate()}
+                className="min-h-11 rounded-xl bg-[#205545] px-4 font-semibold text-white"
+              >
+                Retry calendar refresh
+              </button>
+            </>
+          ) : (
+            <>
+              <span
+                aria-live="polite"
+                className="mr-auto text-sm font-semibold text-[#18332f]"
+              >
+                {selectedDates.length} selected
+              </span>
+              <button
+                type="button"
+                onClick={() => setSelectedDates([])}
+                disabled={selectedDates.length === 0}
+                className="min-h-11 rounded-xl px-3 text-[#276451] disabled:opacity-50"
+              >
+                Clear
+              </button>
+              <button
+                type="button"
+                onClick={() => {
+                  setSelectedDates([]);
+                  setSelectionMode(false);
+                }}
+                className="min-h-11 rounded-xl px-3 text-[#276451]"
+              >
+                Cancel
+              </button>
+              <button
+                type="button"
+                onClick={() => setBulkEditing(true)}
+                disabled={selectedDates.length === 0}
+                className="min-h-11 rounded-xl bg-[#205545] px-4 font-semibold text-white disabled:opacity-50"
+              >
+                Continue
+              </button>
+            </>
+          )}
+        </div>
+      )}
+      {bulkEditing && (
+        <BulkEventEditor
+          roomId={model.room.id}
+          dates={selectedDates}
+          statuses={model.statuses}
+          locations={model.locations}
+          onClose={() => setBulkEditing(false)}
+          onCreated={refreshAfterBulkCreate}
         />
       )}
     </section>

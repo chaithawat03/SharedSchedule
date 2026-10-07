@@ -11,12 +11,26 @@ import {
   updateEvent,
   type EventRepository,
 } from "../../services/event.service";
+import {
+  createBulkEvents,
+  DuplicateBulkEventError,
+  type BulkEventRepository,
+} from "../../services/bulk-event.service";
 
 const headers = { "Cache-Control": "no-store" };
 function json(value: unknown, status = 200) {
   return NextResponse.json(value, { status, headers });
 }
 function failure(error: unknown) {
+  if (error instanceof DuplicateBulkEventError)
+    return json(
+      {
+        error: error.message,
+        code: error.code,
+        conflictDates: error.conflictDates,
+      },
+      409,
+    );
   if (error instanceof EventError) {
     const status =
       error.code === "INVALID_INPUT"
@@ -27,6 +41,31 @@ function failure(error: unknown) {
     return json({ error: error.message, code: error.code }, status);
   }
   return json({ error: "Event service unavailable" }, 503);
+}
+
+export async function handleCreateBulkEvents(
+  request: NextRequest,
+  roomId: string,
+  sessions: SessionRepository,
+  events: BulkEventRepository,
+) {
+  try {
+    const user = await userId(request, sessions);
+    if (!user) return json({ error: "Unauthorized" }, 401);
+    return json(
+      {
+        events: await createBulkEvents(
+          user,
+          roomId,
+          await body(request),
+          events,
+        ),
+      },
+      201,
+    );
+  } catch (error) {
+    return failure(error);
+  }
 }
 async function userId(request: NextRequest, sessions: SessionRepository) {
   const user = await resolveSession(

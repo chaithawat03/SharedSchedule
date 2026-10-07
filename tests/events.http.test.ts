@@ -1,10 +1,13 @@
 import { NextRequest } from "next/server";
 import { describe, expect, it } from "vitest";
 import {
+  handleCreateBulkEvents,
   handleCreateEvent,
   handleDeleteEvent,
   handleUpdateEvent,
 } from "../lib/events/http";
+import type { BulkEventRepository } from "../services/bulk-event.service";
+import type { EventRecord } from "../services/event.service";
 import { SESSION_COOKIE_NAME } from "../lib/session/cookie";
 import { signInWithPhone } from "../services/session.service";
 import type {
@@ -65,6 +68,82 @@ function repository(userId: string): EventRepository {
 }
 
 describe("event HTTP", () => {
+  it("returns 201 for bulk creation, 409 with sorted conflicts, and 401 without a session", async () => {
+    const sessions = new MemorySessionRepository();
+    const login = await signInWithPhone(
+      { phone: "0812345678", displayName: "Smart" },
+      sessions,
+    );
+    if (login.requiresRegistration) throw new Error("Expected session");
+    const rows: EventRecord[] = [];
+    const repo: BulkEventRepository = {
+      bulkTransaction: async (run) =>
+        run({
+          async roomAccessForBulk() {
+            return { active: true, memberActive: true };
+          },
+          async status() {
+            return { roomId: room, active: true };
+          },
+          async location() {
+            return null;
+          },
+          async duplicateCandidates() {
+            return rows;
+          },
+          async insertMany(inputs) {
+            const created = inputs.map((input, index) => ({
+              ...input,
+              id: `60000000-0000-4000-8000-${String(index + 1).padStart(12, "0")}`,
+              createdAt: new Date(),
+              updatedAt: new Date(),
+              deletedAt: null,
+            }));
+            rows.push(...created);
+            return created;
+          },
+          async auditCreates() {},
+        }),
+    };
+    const path = `/api/rooms/${room}/events/bulk`;
+    const input = {
+      dates: ["2026-10-11", "2026-10-04"],
+      event: { statusId: status, allDay: true },
+    };
+    const unauthorized = await handleCreateBulkEvents(
+      request("POST", path, input),
+      room,
+      sessions,
+      repo,
+    );
+    expect(unauthorized.status).toBe(401);
+    const created = await handleCreateBulkEvents(
+      request("POST", path, input, login.token),
+      room,
+      sessions,
+      repo,
+    );
+    expect(created.status).toBe(201);
+    expect(
+      (await created.json()).events.map(
+        (event: EventRecord) => event.startDate,
+      ),
+    ).toEqual(["2026-10-04", "2026-10-11"]);
+    const duplicate = await handleCreateBulkEvents(
+      request("POST", path, input, login.token),
+      room,
+      sessions,
+      repo,
+    );
+    expect(duplicate.status).toBe(409);
+    expect(await duplicate.json()).toEqual({
+      error: "Matching events already exist on selected dates",
+      code: "DUPLICATE_EVENT",
+      conflictDates: ["2026-10-04", "2026-10-11"],
+    });
+    expect(duplicate.headers.get("Cache-Control")).toBe("no-store");
+    expect(rows).toHaveLength(2);
+  });
   it("requires a session on all write methods and disables caching", async () => {
     const sessions = new MemorySessionRepository();
     const repo = repository("nobody");

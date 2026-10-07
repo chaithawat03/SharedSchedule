@@ -24,10 +24,14 @@ export function CalendarDay({
   date,
   model,
   onOpen,
+  selectionMode = false,
+  selected = false,
 }: {
   date: string;
   model: CalendarMonth;
   onOpen: (date: string) => void;
+  selectionMode?: boolean;
+  selected?: boolean;
 }) {
   const users = model.days[date]?.users ?? {};
   const summaries = model.members.flatMap((member) => {
@@ -48,9 +52,10 @@ export function CalendarDay({
     <button
       type="button"
       onClick={() => onOpen(date)}
-      aria-label={`Open ${calendarDateLabel(date)}`}
+      aria-label={`${selectionMode ? "Select" : "Open"} ${calendarDateLabel(date)}`}
+      aria-pressed={selectionMode ? selected : undefined}
       aria-current={date === model.today ? "date" : undefined}
-      className="flex min-h-[74px] min-w-0 flex-col overflow-hidden rounded-lg border border-[#dce8e0] bg-white px-0.5 py-1 text-left text-[#18332f] active:bg-[#e9f3ec] focus-visible:outline-2 focus-visible:outline-[#397c61]"
+      className={`flex min-h-[74px] min-w-0 flex-col overflow-hidden rounded-lg border px-0.5 py-1 text-left text-[#18332f] active:bg-[#e9f3ec] focus-visible:outline-2 focus-visible:outline-[#397c61] ${selected ? "border-[#205545] bg-[#d2ebdb] ring-2 ring-[#205545]" : "border-[#dce8e0] bg-white"}`}
     >
       <span
         className={`mx-0.5 text-xs font-semibold ${date === model.today ? "rounded-full bg-[#276451] px-1 text-white" : ""}`}

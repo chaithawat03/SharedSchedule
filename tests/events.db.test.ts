@@ -24,6 +24,8 @@ import {
   updateEvent,
 } from "../services/event.service";
 import { createRoom } from "../services/room.service";
+import { createBulkEvents } from "../services/bulk-event.service";
+import type { BulkEventRepository } from "../services/bulk-event.service";
 
 if (existsSync(".env.local")) process.loadEnvFile(".env.local");
 const url = process.env.TEST_DATABASE_URL;
@@ -246,5 +248,158 @@ suite("event PostgreSQL integration", () => {
     expect(
       await database.db.select().from(events).where(eq(events.title, marker)),
     ).toHaveLength(0);
+  });
+
+  it("persists all bulk events and CREATE_EVENT audits, and exposes them in the month model", async () => {
+    const repository = createEventRepository(database.db);
+    const created = await createBulkEvents(
+      userId,
+      roomId,
+      {
+        dates: ["2026-10-23", "2026-10-21"],
+        event: { statusId, allDay: true, title: "Bulk integration" },
+      },
+      repository,
+    );
+    expect(created.map((event) => event.startDate)).toEqual([
+      "2026-10-21",
+      "2026-10-23",
+    ]);
+    for (const event of created) {
+      expect(event.endDate).toBe(event.startDate);
+      expect(event.ownerUserId).toBe(userId);
+      const audit = await database.db
+        .select()
+        .from(auditLog)
+        .where(eq(auditLog.entityId, event.id));
+      expect(audit).toHaveLength(1);
+      expect(audit[0]).toMatchObject({
+        action: "CREATE_EVENT",
+        oldValue: null,
+        newValue: { id: event.id },
+      });
+    }
+    const month = await getCalendarMonth(
+      { id: userId, displayName: "Event owner" },
+      roomId,
+      2026,
+      10,
+      createCalendarRepository(database.db),
+    );
+    for (const event of created)
+      expect(
+        month.days[event.startDate].users[userId].events.map(
+          (item) => item.eventId,
+        ),
+      ).toContain(event.id);
+    await expect(
+      createBulkEvents(
+        userId,
+        roomId,
+        {
+          dates: ["2026-10-21", "2026-10-22"],
+          event: { statusId, allDay: true, title: "Bulk integration" },
+        },
+        repository,
+      ),
+    ).rejects.toMatchObject({
+      code: "DUPLICATE_EVENT",
+      conflictDates: ["2026-10-21"],
+    });
+    expect(
+      await database.db
+        .select()
+        .from(events)
+        .where(eq(events.startDate, "2026-10-22")),
+    ).toHaveLength(0);
+    await deleteEvent(userId, created[0].id, repository);
+    await expect(
+      createBulkEvents(
+        userId,
+        roomId,
+        {
+          dates: ["2026-10-21"],
+          event: { statusId, allDay: true, title: "Bulk integration" },
+        },
+        repository,
+      ),
+    ).resolves.toHaveLength(1);
+  });
+
+  it("rolls back every bulk event when auditing fails", async () => {
+    const repository = createEventRepository(database.db);
+    const failing: BulkEventRepository = {
+      bulkTransaction: (run) =>
+        repository.bulkTransaction((tx) =>
+          run({
+            ...tx,
+            auditCreates: async () => {
+              throw new Error("audit failed");
+            },
+          }),
+        ),
+    };
+    await expect(
+      createBulkEvents(
+        userId,
+        roomId,
+        {
+          dates: ["2026-10-24", "2026-10-25"],
+          event: { statusId, allDay: true, title: "Bulk rollback" },
+        },
+        failing,
+      ),
+    ).rejects.toThrow("audit failed");
+    expect(
+      await database.db
+        .select()
+        .from(events)
+        .where(eq(events.title, "Bulk rollback")),
+    ).toHaveLength(0);
+    expect(
+      await database.db
+        .select()
+        .from(auditLog)
+        .where(eq(auditLog.action, "CREATE_EVENT"))
+        .then((items) =>
+          items.filter(
+            (item) =>
+              (item.newValue as { title?: string } | null)?.title ===
+              "Bulk rollback",
+          ),
+        ),
+    ).toHaveLength(0);
+  });
+
+  it("serializes concurrent identical bulk submissions with the room lock", async () => {
+    const repository = createEventRepository(database.db);
+    const input = {
+      dates: ["2026-10-26", "2026-10-27"],
+      event: { statusId, allDay: true, title: "Concurrent bulk" },
+    };
+    const results = await Promise.allSettled([
+      createBulkEvents(userId, roomId, input, repository),
+      createBulkEvents(userId, roomId, input, repository),
+    ]);
+    expect(
+      results.filter((result) => result.status === "fulfilled"),
+    ).toHaveLength(1);
+    expect(
+      results
+        .filter((result) => result.status === "rejected")
+        .map((result) => (result as PromiseRejectedResult).reason.code),
+    ).toEqual(["DUPLICATE_EVENT"]);
+    const persisted = await database.db
+      .select()
+      .from(events)
+      .where(eq(events.title, "Concurrent bulk"));
+    expect(persisted).toHaveLength(2);
+    for (const event of persisted) {
+      const audits = await database.db
+        .select()
+        .from(auditLog)
+        .where(eq(auditLog.entityId, event.id));
+      expect(audits.map((audit) => audit.action)).toEqual(["CREATE_EVENT"]);
+    }
   });
 });

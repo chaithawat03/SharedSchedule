@@ -1,6 +1,6 @@
 # SharedSchedule
 
-Mobile-first shared scheduling, built with Next.js App Router, TypeScript, Tailwind CSS, PostgreSQL, and Drizzle ORM. This repository contains **Milestone 5: Event CRUD**.
+Mobile-first shared scheduling, built with Next.js App Router, TypeScript, Tailwind CSS, PostgreSQL, and Drizzle ORM. This repository contains **Milestone 6: Bulk Edit**.
 
 ## Requirements
 
@@ -82,15 +82,20 @@ The server uses a fixed set of room, participant, master-data, pattern, override
 
 Active calendar participants can add events from a selected day and edit or delete their own event cards. Room owners who have not joined as participants cannot create events. Weekly patterns and date overrides remain separate and cannot be changed from the event form. New rooms receive the nine default room statuses (WORK, OT, OFF, LEAVE, WFH, TRAVEL, PERSONAL, ACTIVITY, OTHER) in the same transaction as room creation while retaining zero participants and zero events. The `0001_default_room_statuses` data migration adds only missing status codes to existing rooms; it preserves customized status rows.
 
-| Method   | Route                       | Result                                        |
-| -------- | --------------------------- | --------------------------------------------- |
-| `POST`   | `/api/rooms/:roomId/events` | `201` with `{ event }`                        |
-| `PATCH`  | `/api/events/:eventId`      | `200` with `{ event }`                        |
-| `DELETE` | `/api/events/:eventId`      | `200` with `{ event }`, including `deletedAt` |
+| Method   | Route                            | Result                                        |
+| -------- | -------------------------------- | --------------------------------------------- |
+| `POST`   | `/api/rooms/:roomId/events`      | `201` with `{ event }`                        |
+| `POST`   | `/api/rooms/:roomId/events/bulk` | `201` with `{ events }`                       |
+| `PATCH`  | `/api/events/:eventId`           | `200` with `{ event }`                        |
+| `DELETE` | `/api/events/:eventId`           | `200` with `{ event }`, including `deletedAt` |
 
 All three routes use the session cookie, require active room membership, and return no-store responses. Creation assigns owner and creator from the session. Update and delete require event ownership; other active participants receive `403`, while unrelated users receive `404`. Statuses and selected master locations must belong to the event's room and be active when newly chosen. An unchanged historical inactive reference may remain on edit. A master location and custom text cannot be selected together.
 
 Dates are strict `YYYY-MM-DD` strings with inclusive spans. Timed events require strict local `HH:mm` start and end times; a same-day end must be later than its start. An overnight event uses two dates. All-day events clear both times and the end-time-plus flag. Delete sets `deleted_at` without removing the row. Create, changed update, and delete write audit snapshots in the same database transaction. A normalized no-op PATCH writes no audit row. After a successful mutation, the client refetches the displayed calendar month and keeps the selected day in view. If that refetch fails, the form shows a retry control without repeating the event write.
+
+Bulk Edit is **Add to selected dates**: an active participant selects 1–31 distinct days in one displayed month, then submits `{ "dates": ["2026-10-04", "2026-10-08"], "event": { "statusId": "...", "allDay": true, "title": null, "startTime": null, "endTime": null, "endTimeOpen": false, "locationId": null, "locationText": null, "note": null } }`. The server creates one separate single-day event per date and assigns room, owner, creator, and both dates itself. Template system, ownership, and date fields are rejected. Timed bulk events require an end time later than the start time on each date; use the individual editor for overnight or multi-day events. OFF events are additive and leave any base WORK schedule visible. Bulk Edit never writes work patterns or overrides.
+
+The bulk endpoint requires an active room and active membership, including for the room owner. It sorts dates before writing or responding. An active, nondeleted event for the same room, owner, date, and every normalized event-domain field is an exact duplicate; any exact match returns `409` with `code: "DUPLICATE_EVENT"` and sorted `conflictDates`, and creates no events or audit rows. Different event details on the same date remain valid. One PostgreSQL transaction locks the room row `FOR UPDATE`, checks membership and room-scoped active references, checks duplicates, inserts all events, and inserts one `CREATE_EVENT` audit row for each. The room lock serializes **bulk submissions for the same room** through duplicate detection; it does not extend this guarantee to simultaneous individual event creation. No event-equality unique constraint is added. After a successful bulk POST, the UI refetches the currently displayed month; if the GET fails, Retry calendar refresh repeats only the GET.
 
 To run PostgreSQL integration tests, provide `TEST_DATABASE_URL` for a **dedicated** database whose name contains `test`, then run `npm test`. The tests apply migrations and clean up their fixtures. Without `TEST_DATABASE_URL`, they are reported as skipped; unit, service, HTTP, and screen tests still run. No local database is needed for the production build.
 
