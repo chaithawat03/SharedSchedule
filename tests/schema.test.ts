@@ -2,6 +2,7 @@ import { describe, expect, it } from "vitest";
 import { getTableConfig } from "drizzle-orm/pg-core";
 import {
   events,
+  notifications,
   roomMembers,
   rooms,
   users,
@@ -77,5 +78,26 @@ describe("foundation schema", () => {
         "events_status_idx",
       ]),
     );
+  });
+
+  it("indexes recipient feeds and unread counts without changing notification columns", () => {
+    const config = getTableConfig(notifications);
+    expect(config.indexes.map((index) => index.config.name)).toEqual(
+      expect.arrayContaining([
+        "notifications_recipient_created_idx",
+        "notifications_recipient_unread_idx",
+      ]),
+    );
+    expect(config.columns.map((column) => column.name)).toEqual([
+      "id",
+      "room_id",
+      "from_user_id",
+      "to_user_id",
+      "event_id",
+      "type",
+      "message",
+      "read_at",
+      "created_at",
+    ]);
   });
 });

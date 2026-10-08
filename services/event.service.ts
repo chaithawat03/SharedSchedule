@@ -4,6 +4,10 @@ import {
   normalizeEventValues,
   type EventValues,
 } from "../lib/events/validation";
+import {
+  NotificationService,
+  type NotificationWriter,
+} from "./notification.service";
 
 export type EventRecord = EventValues & {
   id: string;
@@ -43,6 +47,7 @@ export interface EventTransaction {
     oldValue: EventRecord | null,
     newValue: EventRecord,
   ): Promise<void>;
+  notificationWriter(): NotificationWriter;
 }
 
 export interface EventRepository {
@@ -153,6 +158,12 @@ export async function createEvent(
       createdBy: userId,
     });
     await tx.audit("CREATE_EVENT", null, event);
+    await NotificationService.publish(tx.notificationWriter(), {
+      roomId,
+      fromUserId: userId,
+      eventId: event.id,
+      type: "EVENT_CREATED",
+    });
     return event;
   });
 }
@@ -172,6 +183,12 @@ export async function updateEvent(
     if (JSON.stringify(before) === JSON.stringify(after)) return event;
     const updated = await tx.replace(event, after, now);
     await tx.audit("UPDATE_EVENT", event, updated);
+    await NotificationService.publish(tx.notificationWriter(), {
+      roomId: event.roomId,
+      fromUserId: userId,
+      eventId: event.id,
+      type: "EVENT_UPDATED",
+    });
     return updated;
   });
 }
@@ -186,6 +203,12 @@ export async function deleteEvent(
     const event = await ownActiveEvent(tx, userId, eventId);
     const deleted = await tx.softDelete(event, now);
     await tx.audit("DELETE_EVENT", event, deleted);
+    await NotificationService.publish(tx.notificationWriter(), {
+      roomId: event.roomId,
+      fromUserId: userId,
+      eventId: event.id,
+      type: "EVENT_DELETED",
+    });
     return deleted;
   });
 }

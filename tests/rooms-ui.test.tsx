@@ -30,6 +30,14 @@ describe("room screens", () => {
     expect(html).toContain('href="/work-calendar"');
   });
 
+  it("links to notifications with the current unread count", () => {
+    const html = renderToStaticMarkup(
+      <RoomListView rooms={[]} displayName="Smart" unreadCount={3} />,
+    );
+    expect(html).toContain('href="/notifications"');
+    expect(html).toContain("3 unread");
+  });
+
   it("shows each room with its participant count", () => {
     const html = renderToStaticMarkup(
       <RoomListView

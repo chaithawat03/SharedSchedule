@@ -6,9 +6,11 @@ import { CreateRoomForm } from "./CreateRoomForm";
 export function RoomListView({
   rooms,
   displayName,
+  unreadCount = 0,
 }: {
   rooms: RoomSummary[];
   displayName: string;
+  unreadCount?: number;
 }) {
   return (
     <main className="min-h-dvh bg-[#f6f8f5] px-5 pb-[calc(2rem+env(safe-area-inset-bottom))] pt-[calc(1.25rem+env(safe-area-inset-top))] text-[#18332f] sm:px-8">
@@ -30,12 +32,20 @@ export function RoomListView({
             Open a room to see its participants or share an invite.
           </p>
         </div>
-        <Link
-          href="/work-calendar"
-          className="mt-6 flex min-h-12 items-center justify-center rounded-xl border border-[#bfd4c6] bg-white px-4 font-semibold text-[#205545]"
-        >
-          Work calendar
-        </Link>
+        <div className="mt-6 grid gap-3 sm:grid-cols-2">
+          <Link
+            href="/work-calendar"
+            className="flex min-h-12 items-center justify-center rounded-xl border border-[#bfd4c6] bg-white px-4 font-semibold text-[#205545]"
+          >
+            Work calendar
+          </Link>
+          <Link
+            href="/notifications"
+            className="flex min-h-12 items-center justify-center rounded-xl border border-[#bfd4c6] bg-white px-4 font-semibold text-[#205545]"
+          >
+            Notifications · {unreadCount} unread
+          </Link>
+        </div>
         <div className="mt-8 grid gap-3" aria-label="Rooms">
           {rooms.length === 0 ? (
             <div className="rounded-3xl border border-dashed border-[#cbded2] bg-white p-6">

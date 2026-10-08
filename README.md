@@ -1,6 +1,6 @@
 # SharedSchedule
 
-Mobile-first shared scheduling, built with Next.js App Router, TypeScript, Tailwind CSS, PostgreSQL, and Drizzle ORM. This repository contains **Milestone 8: Room Status and Location Masters**.
+Mobile-first shared scheduling, built with Next.js App Router, TypeScript, Tailwind CSS, PostgreSQL, and Drizzle ORM. This repository contains **Milestone 9: Audit and Notifications Foundation**.
 
 ## Requirements
 
@@ -44,6 +44,12 @@ Enter a Thai mobile number to sign in. If the number is new, the app asks for a 
 Future product behavior follows `UI → Route Handler / Server Action → Service → Validation / Permission → Drizzle ORM → PostgreSQL`. Milestone 1 defines the database boundary in `lib/db/`; it does not implement product routes or services early. Calendar dates use PostgreSQL `date`, and local work times use `time without time zone`. Application date and time assumptions use `Asia/Bangkok`.
 
 The schema includes users, sessions, rooms, room members, invites, statuses, locations, work patterns, work overrides, events, notifications, and audit records. Events allow multiple rows per day, date spans, all-day or timed entries, open end times, and soft deletion. `rooms.owner_user_id` is the only source of room administrative authority; `room_members` represents calendar participation, and its `role` does not grant ownership. **A newly created room has zero calendar participants and zero events.** Its owner may explicitly choose **Join as Participant** on the room page; this inserts one `MEMBER` row without changing administrative authority or consuming an invite. Repeating the action leaves that membership unchanged. Room creation never pre-populates work schedules or events.
+
+## In-app notifications
+
+Successful event creation, changed updates, deletion, and bulk creation create durable notification rows for other active participants and the room owner. The actor is excluded and recipients are deduplicated. A bulk request produces one summary per recipient. Notification inserts share the existing event and audit PostgreSQL transaction, so all three commit or roll back together. Generic messages omit event titles, notes, phone numbers, invite tokens, and audit snapshots. Personal Work Calendar edits, joins, invites, and room master edits do not create notifications. No realtime or external delivery is configured.
+
+`/notifications` shows the signed-in user's accessible notifications, unread count, explicit Refresh and Mark as read controls. `GET /api/me/notifications?limit=20&cursor=...` returns up to 50 records per page with descending `(created_at, id)` keyset pagination and an unread count across all accessible records. `PATCH /api/me/notifications/:id/read` is idempotent. Both routes require a session and current access to each notification's active room as owner or active participant. The room list links to the page and shows the current unread count. No audit-read API is exposed.
 
 The development seed is a separate explicit fixture operation. It adds Smart and Partner as participants of the sample room so the later calendar milestones have realistic data. It does not define room-creation behavior. The seed can be re-run without duplicating its records.
 

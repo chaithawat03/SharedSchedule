@@ -4,10 +4,12 @@ import {
   auditLog,
   events,
   locationMaster,
+  notifications,
   roomMembers,
   rooms,
   statusMaster,
 } from "../db/schema";
+import type { NotificationWriter } from "../../services/notification.service";
 import type {
   EventRepository,
   EventTransaction,
@@ -18,6 +20,30 @@ import type {
 } from "../../services/bulk-event.service";
 
 type Database = ReturnType<typeof createDatabase>["db"];
+type Transaction = Parameters<Parameters<Database["transaction"]>[0]>[0];
+
+function notificationWriter(tx: Transaction): NotificationWriter {
+  return {
+    async recipients(roomId) {
+      const [room] = await tx
+        .select({ ownerUserId: rooms.ownerUserId })
+        .from(rooms)
+        .where(eq(rooms.id, roomId))
+        .limit(1);
+      if (!room) throw new Error("Room missing while publishing notifications");
+      const members = await tx
+        .select({ userId: roomMembers.userId })
+        .from(roomMembers)
+        .where(
+          and(eq(roomMembers.roomId, roomId), eq(roomMembers.status, "ACTIVE")),
+        );
+      return [room.ownerUserId, ...members.map((member) => member.userId)];
+    },
+    async insert(rows) {
+      await tx.insert(notifications).values(rows);
+    },
+  };
+}
 
 export function createEventRepository(
   db: Database,
@@ -128,6 +154,7 @@ export function createEventRepository(
               newValue,
             });
           },
+          notificationWriter: () => notificationWriter(tx),
         };
         return run(store);
       });
@@ -213,6 +240,7 @@ export function createEventRepository(
               })),
             );
           },
+          notificationWriter: () => notificationWriter(tx),
         };
         return run(store);
       });

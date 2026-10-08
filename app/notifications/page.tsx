@@ -1,26 +1,31 @@
 import { cookies } from "next/headers";
 import { redirect } from "next/navigation";
-import { RoomListView } from "../../components/rooms/RoomListView";
-import { getRoomRepository } from "../../lib/rooms/repository";
+import { NotificationsView } from "../../components/notifications/NotificationsView";
 import { getNotificationRepository } from "../../lib/notifications/repository";
 import { SESSION_COOKIE_NAME } from "../../lib/session/cookie";
 import { getSessionRepository } from "../../lib/session/repository";
+import { listNotifications } from "../../services/notification.service";
 import { resolveSession } from "../../services/session.service";
-import { listRooms } from "../../services/room.service";
 
-export default async function RoomsPage() {
+export default async function NotificationsPage() {
   const token = (await cookies()).get(SESSION_COOKIE_NAME)?.value;
   const user = await resolveSession(token, getSessionRepository());
   if (!user) redirect("/");
-  const [rooms, unreadCount] = await Promise.all([
-    listRooms(user.id, getRoomRepository()),
-    getNotificationRepository().unreadCount(user.id),
-  ]);
+  const feed = await listNotifications(
+    user.id,
+    null,
+    null,
+    getNotificationRepository(),
+  );
   return (
-    <RoomListView
-      rooms={rooms}
-      displayName={user.displayName}
-      unreadCount={unreadCount}
+    <NotificationsView
+      initialFeed={{
+        ...feed,
+        notifications: feed.notifications.map((item) => ({
+          ...item,
+          readAt: item.readAt?.toISOString() ?? null,
+        })),
+      }}
     />
   );
 }

@@ -15,6 +15,13 @@
       "when": 1791200000000,
       "tag": "0001_default_room_statuses",
       "breakpoints": true
+    },
+    {
+      "idx": 2,
+      "version": "7",
+      "when": 1791422825998,
+      "tag": "0002_long_cammi",
+      "breakpoints": true
     }
   ]
 }

@@ -24,6 +24,11 @@ const request = {
 function fixture() {
   const rows: EventRecord[] = [];
   const audits: EventRecord[] = [];
+  const notifications: {
+    toUserId: string;
+    type: string;
+    eventId: string | null;
+  }[] = [];
   const members = new Set([alice]);
   const statuses = new Map([
     [status, { roomId: room, active: true }],
@@ -37,11 +42,13 @@ function fixture() {
   ]);
   let roomActive = true;
   let failAudit = false;
+  let failNotification = false;
   let next = 0;
   const repository: BulkEventRepository = {
     async bulkTransaction(run) {
       const beforeRows = rows.length;
       const beforeAudits = audits.length;
+      const beforeNotifications = notifications.length;
       const tx: BulkEventTransaction = {
         async roomAccessForBulk(roomId, userId) {
           return roomId === room
@@ -79,12 +86,28 @@ function fixture() {
           if (failAudit) throw new Error("audit failed");
           audits.push(...created);
         },
+        notificationWriter() {
+          return {
+            recipients: async () => [alice, owner, owner],
+            insert: async (
+              values: {
+                toUserId: string;
+                type: string;
+                eventId: string | null;
+              }[],
+            ) => {
+              if (failNotification) throw new Error("notification failed");
+              notifications.push(...values);
+            },
+          };
+        },
       };
       try {
         return await run(tx);
       } catch (error) {
         rows.length = beforeRows;
         audits.length = beforeAudits;
+        notifications.length = beforeNotifications;
         throw error;
       }
     },
@@ -93,6 +116,7 @@ function fixture() {
     repository,
     rows,
     audits,
+    notifications,
     members,
     statuses,
     locations,
@@ -102,10 +126,36 @@ function fixture() {
     failAudit: () => {
       failAudit = true;
     },
+    failNotification: () => {
+      failNotification = true;
+    },
   };
 }
 
 describe("bulk event service", () => {
+  it("emits one summary for a successful multi-date batch", async () => {
+    const f = fixture();
+    await createBulkEvents(alice, room, request, f.repository);
+    expect(
+      f.notifications.map(({ toUserId, type, eventId }) => ({
+        toUserId,
+        type,
+        eventId,
+      })),
+    ).toEqual([
+      { toUserId: owner, type: "BULK_EVENTS_CREATED", eventId: null },
+    ]);
+  });
+  it("rolls back events and audits when its summary cannot be stored", async () => {
+    const f = fixture();
+    f.failNotification();
+    await expect(
+      createBulkEvents(alice, room, request, f.repository),
+    ).rejects.toThrow("notification failed");
+    expect(f.rows).toHaveLength(0);
+    expect(f.audits).toHaveLength(0);
+    expect(f.notifications).toHaveLength(0);
+  });
   it("creates one ordered single-day event and audit per date with session ownership", async () => {
     const f = fixture();
     const created = await createBulkEvents(alice, room, request, f.repository);

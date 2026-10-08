@@ -225,23 +225,36 @@ export const events = pgTable(
   ],
 );
 
-export const notifications = pgTable("notifications", {
-  id: uuid("id").primaryKey().defaultRandom(),
-  roomId: uuid("room_id")
-    .notNull()
-    .references(() => rooms.id, { onDelete: "cascade" }),
-  fromUserId: uuid("from_user_id")
-    .notNull()
-    .references(() => users.id),
-  toUserId: uuid("to_user_id")
-    .notNull()
-    .references(() => users.id),
-  eventId: uuid("event_id").references(() => events.id),
-  type: varchar("type", { length: 48 }).notNull(),
-  message: text("message").notNull(),
-  readAt: timestamp("read_at", { withTimezone: true }),
-  createdAt: createdAt(),
-});
+export const notifications = pgTable(
+  "notifications",
+  {
+    id: uuid("id").primaryKey().defaultRandom(),
+    roomId: uuid("room_id")
+      .notNull()
+      .references(() => rooms.id, { onDelete: "cascade" }),
+    fromUserId: uuid("from_user_id")
+      .notNull()
+      .references(() => users.id),
+    toUserId: uuid("to_user_id")
+      .notNull()
+      .references(() => users.id),
+    eventId: uuid("event_id").references(() => events.id),
+    type: varchar("type", { length: 48 }).notNull(),
+    message: text("message").notNull(),
+    readAt: timestamp("read_at", { withTimezone: true }),
+    createdAt: createdAt(),
+  },
+  (table) => [
+    index("notifications_recipient_created_idx").on(
+      table.toUserId,
+      table.createdAt.desc(),
+      table.id.desc(),
+    ),
+    index("notifications_recipient_unread_idx")
+      .on(table.toUserId)
+      .where(sql`read_at is null`),
+  ],
+);
 
 export const auditLog = pgTable("audit_log", {
   id: uuid("id").primaryKey().defaultRandom(),

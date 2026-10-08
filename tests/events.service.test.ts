@@ -29,6 +29,12 @@ const payload = {
 
 function fixture() {
   const rows = new Map<string, EventRecord>();
+  const notifications: {
+    toUserId: string;
+    type: string;
+    eventId: string | null;
+  }[] = [];
+  let failNotification = false;
   const audit: {
     action: string;
     oldValue: EventRecord | null;
@@ -86,12 +92,77 @@ function fixture() {
     async audit(action, oldValue, newValue) {
       audit.push({ action, oldValue, newValue });
     },
+    notificationWriter() {
+      return {
+        recipients: async () => [alice, bob, bob],
+        insert: async (
+          values: { toUserId: string; type: string; eventId: string | null }[],
+        ) => {
+          if (failNotification) throw new Error("notification failed");
+          notifications.push(...values);
+        },
+      };
+    },
   };
-  const repository: EventRepository = { transaction: async (run) => run(tx) };
-  return { repository, rows, audit, members, statuses, locations };
+  const repository: EventRepository = {
+    transaction: async (run) => {
+      const beforeRows = new Map(rows);
+      const beforeAudits = audit.length;
+      const beforeNotifications = notifications.length;
+      try {
+        return await run(tx);
+      } catch (error) {
+        rows.clear();
+        for (const [id, row] of beforeRows) rows.set(id, row);
+        audit.length = beforeAudits;
+        notifications.length = beforeNotifications;
+        throw error;
+      }
+    },
+  };
+  return {
+    repository,
+    rows,
+    audit,
+    notifications,
+    members,
+    statuses,
+    locations,
+    failNotification: () => {
+      failNotification = true;
+    },
+  };
 }
 
 describe("event service", () => {
+  it("notifies other participants only after changed event writes", async () => {
+    const f = fixture();
+    const event = await createEvent(alice, room, payload, f.repository);
+    await updateEvent(alice, event.id, { title: " Shift " }, f.repository);
+    await updateEvent(alice, event.id, { title: "New" }, f.repository);
+    await deleteEvent(alice, event.id, f.repository);
+    expect(
+      f.notifications.map(({ toUserId, type, eventId }) => ({
+        toUserId,
+        type,
+        eventId,
+      })),
+    ).toEqual([
+      { toUserId: bob, type: "EVENT_CREATED", eventId: event.id },
+      { toUserId: bob, type: "EVENT_UPDATED", eventId: event.id },
+      { toUserId: bob, type: "EVENT_DELETED", eventId: event.id },
+    ]);
+  });
+  it("rolls back an event and audit when notification insertion fails", async () => {
+    const f = fixture();
+    f.failNotification();
+    await expect(
+      createEvent(alice, room, payload, f.repository),
+    ).rejects.toThrow("notification failed");
+    expect(f.rows.size).toBe(0);
+    expect(f.audit).toHaveLength(0);
+    expect(f.notifications).toHaveLength(0);
+  });
   it("creates only for an active participant and sets immutable ownership from session", async () => {
     const f = fixture();
     const event = await createEvent(alice, room, payload, f.repository);

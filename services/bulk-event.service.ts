@@ -5,6 +5,10 @@ import {
   type EventValues,
 } from "../lib/events/validation";
 import { EventError, type EventRecord } from "./event.service";
+import {
+  NotificationService,
+  type NotificationWriter,
+} from "./notification.service";
 
 type NewEvent = EventValues & {
   roomId: string;
@@ -28,6 +32,7 @@ export interface BulkEventTransaction {
   ): Promise<EventRecord[]>;
   insertMany(inputs: NewEvent[]): Promise<EventRecord[]>;
   auditCreates(events: EventRecord[]): Promise<void>;
+  notificationWriter(): NotificationWriter;
 }
 
 export interface BulkEventRepository {
@@ -117,6 +122,12 @@ export async function createBulkEvents(
     );
     created.sort((a, b) => a.startDate.localeCompare(b.startDate));
     await tx.auditCreates(created);
+    await NotificationService.publish(tx.notificationWriter(), {
+      roomId,
+      fromUserId: userId,
+      eventId: null,
+      type: "BULK_EVENTS_CREATED",
+    });
     return created;
   });
 }

@@ -63,6 +63,9 @@ function repository(userId: string): EventRepository {
       throw new Error("unexpected");
     },
     async audit() {},
+    notificationWriter() {
+      return { recipients: async () => [], insert: async () => {} };
+    },
   };
   return { transaction: async (run) => run(tx) };
 }
@@ -103,6 +106,9 @@ describe("event HTTP", () => {
             return created;
           },
           async auditCreates() {},
+          notificationWriter() {
+            return { recipients: async () => [], insert: async () => {} };
+          },
         }),
     };
     const path = `/api/rooms/${room}/events/bulk`;
