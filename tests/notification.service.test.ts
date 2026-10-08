@@ -99,6 +99,7 @@ describe("notification service", () => {
       message: "A room member added an event.",
       readAt: null,
       roomName: "Room",
+      actorDisplayName: "Actor",
     }));
     let seenCursor: { createdAt: string; id: string } | null = null;
     const repo: NotificationRepository = {

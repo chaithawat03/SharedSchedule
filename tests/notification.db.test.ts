@@ -371,4 +371,76 @@ suite("notification PostgreSQL integration", () => {
     );
     expect(bulkAudits).toHaveLength(0);
   });
+
+  it("reveals only actors who currently belong to the notification room", async () => {
+    const repo = createNotificationRepository(database.db);
+    const [activeActorNotice, ownerActorNotice, otherRoomActorNotice] =
+      await database.db
+        .insert(notifications)
+        .values([
+          {
+            roomId,
+            fromUserId: actor,
+            toUserId: owner,
+            eventId: null,
+            type: "EVENT_CREATED",
+            message: "A room member added an event.",
+          },
+          {
+            roomId,
+            fromUserId: owner,
+            toUserId: member,
+            eventId: null,
+            type: "EVENT_CREATED",
+            message: "A room member added an event.",
+          },
+          {
+            roomId,
+            fromUserId: outsider,
+            toUserId: owner,
+            eventId: null,
+            type: "EVENT_CREATED",
+            message: "A room member added an event.",
+          },
+        ])
+        .returning({ id: notifications.id });
+
+    const ownerFeed = await listNotifications(owner, "50", null, repo);
+    expect(
+      ownerFeed.notifications.find((row) => row.id === activeActorNotice.id)
+        ?.actorDisplayName,
+    ).toBe("User 1");
+    const ownerRow = (
+      await listNotifications(member, "50", null, repo)
+    ).notifications.find((row) => row.id === ownerActorNotice.id);
+    expect(ownerRow?.actorDisplayName).toBe("User 0");
+    expect(ownerRow).not.toHaveProperty("phoneNormalized");
+    expect(
+      ownerFeed.notifications.find((row) => row.id === otherRoomActorNotice.id)
+        ?.actorDisplayName,
+    ).toBeNull();
+
+    await database.db
+      .update(roomMembers)
+      .set({ status: "INACTIVE" })
+      .where(
+        and(eq(roomMembers.roomId, roomId), eq(roomMembers.userId, actor)),
+      );
+    expect(
+      (await listNotifications(owner, "50", null, repo)).notifications.find(
+        (row) => row.id === activeActorNotice.id,
+      )?.actorDisplayName,
+    ).toBeNull();
+
+    await database.db
+      .delete(roomMembers)
+      .where(
+        and(eq(roomMembers.roomId, roomId), eq(roomMembers.userId, actor)),
+      );
+    expect(
+      (await listNotifications(owner, "50", null, repo)).notifications.find(
+        (row) => row.id === activeActorNotice.id,
+      )?.actorDisplayName,
+    ).toBeNull();
+  });
 });

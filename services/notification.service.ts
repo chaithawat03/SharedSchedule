@@ -20,6 +20,7 @@ export type NotificationRow = NotificationInput & {
   createdAt: string;
   readAt: Date | null;
   roomName: string;
+  actorDisplayName: string | null;
 };
 
 export type NotificationCursor = { createdAt: string; id: string };

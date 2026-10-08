@@ -44,6 +44,7 @@ describe("notification HTTP", () => {
             readAt: null,
             createdAt: at,
             roomName: "Room",
+            actorDisplayName: "Smart",
           },
         ];
       },
@@ -67,7 +68,7 @@ describe("notification HTTP", () => {
     expect(seenLimit).toBe(21);
     expect(await response.json()).toMatchObject({
       unreadCount: 4,
-      notifications: [{ id, readAt: null }],
+      notifications: [{ id, readAt: null, actorDisplayName: "Smart" }],
       nextCursor: null,
     });
     expect(marked).toBe(false);

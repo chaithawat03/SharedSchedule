@@ -1,6 +1,6 @@
 import { and, count, desc, eq, exists, isNull, lt, or, sql } from "drizzle-orm";
 import { createDatabase, getDatabase } from "../db";
-import { notifications, roomMembers, rooms } from "../db/schema";
+import { notifications, roomMembers, rooms, users } from "../db/schema";
 import type {
   NotificationRepository,
   NotificationType,
@@ -60,9 +60,31 @@ export function createNotificationRepository(
           readAt: notifications.readAt,
           createdAt: sql<string>`to_char(${notifications.createdAt} AT TIME ZONE 'UTC', 'YYYY-MM-DD"T"HH24:MI:SS.US"Z"')`,
           roomName: rooms.name,
+          actorDisplayName: users.displayName,
         })
         .from(notifications)
         .innerJoin(rooms, eq(rooms.id, notifications.roomId))
+        .leftJoin(
+          users,
+          and(
+            eq(users.id, notifications.fromUserId),
+            or(
+              eq(rooms.ownerUserId, users.id),
+              exists(
+                db
+                  .select({ id: roomMembers.id })
+                  .from(roomMembers)
+                  .where(
+                    and(
+                      eq(roomMembers.roomId, notifications.roomId),
+                      eq(roomMembers.userId, users.id),
+                      eq(roomMembers.status, "ACTIVE"),
+                    ),
+                  ),
+              ),
+            ),
+          ),
+        )
         .where(
           and(
             eq(notifications.toUserId, userId),

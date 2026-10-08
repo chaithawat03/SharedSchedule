@@ -14,6 +14,7 @@ export type DisplayNotification = {
   createdAt: string;
   readAt: string | null;
   roomName: string;
+  actorDisplayName: string | null;
 };
 
 export type DisplayFeed = {
@@ -168,6 +169,9 @@ export function NotificationsView({
                       {timeLabel(item.createdAt)}
                     </time>
                   </div>
+                  <p className="mt-2 text-sm font-medium text-[#56716a]">
+                    {item.actorDisplayName ?? "A room member"}
+                  </p>
                   <p className="mt-2 text-sm leading-6">{item.message}</p>
                   <div className="mt-3 flex flex-wrap items-center gap-3">
                     <Link

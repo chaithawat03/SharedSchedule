@@ -21,6 +21,7 @@ const item = {
   createdAt: "2026-10-08T01:02:03.000456Z",
   readAt: null,
   roomName: "Together",
+  actorDisplayName: "Alex",
 };
 
 afterEach(() => {
@@ -29,6 +30,36 @@ afterEach(() => {
 });
 
 describe("Notifications page", () => {
+  it("shows the current actor name without changing the event message", () => {
+    render(
+      <NotificationsView
+        initialFeed={{
+          notifications: [item],
+          unreadCount: 1,
+          nextCursor: null,
+        }}
+      />,
+    );
+
+    expect(screen.getByText("Alex")).toBeTruthy();
+    expect(screen.getByText(item.message)).toBeTruthy();
+  });
+
+  it("uses a generic actor label when the actor name is unavailable", () => {
+    render(
+      <NotificationsView
+        initialFeed={{
+          notifications: [{ ...item, actorDisplayName: null }],
+          unreadCount: 1,
+          nextCursor: null,
+        }}
+      />,
+    );
+
+    expect(screen.getByText("A room member")).toBeTruthy();
+    expect(screen.getByText(item.message)).toBeTruthy();
+  });
+
   it("shows an empty state and refreshes explicitly", async () => {
     const fetch = vi.fn(async () =>
       Response.json({
