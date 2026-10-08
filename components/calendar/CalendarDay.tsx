@@ -34,6 +34,15 @@ export function CalendarDay({
   selected?: boolean;
 }) {
   const users = model.days[date]?.users ?? {};
+  const spokenSummaries = model.members.flatMap((member) => {
+    const schedule = users[member.userId];
+    if (!schedule) return [];
+    const codes = [
+      ...(schedule.baseSchedule ? [schedule.baseSchedule.code] : []),
+      ...schedule.events.map((event) => event.code),
+    ];
+    return codes.length ? [`${member.displayName}: ${codes.join(", ")}`] : [];
+  });
   const summaries = model.members.flatMap((member) => {
     const schedule = users[member.userId];
     if (!schedule) return [];
@@ -53,25 +62,39 @@ export function CalendarDay({
       type="button"
       onClick={() => onOpen(date)}
       aria-label={`${selectionMode ? "Select" : "Open"} ${calendarDateLabel(date)}`}
+      aria-describedby={`calendar-summary-${date}`}
       aria-pressed={selectionMode ? selected : undefined}
       aria-current={date === model.today ? "date" : undefined}
-      className={`flex min-h-[74px] min-w-0 flex-col overflow-hidden rounded-lg border px-0.5 py-1 text-left text-[#18332f] active:bg-[#e9f3ec] focus-visible:outline-2 focus-visible:outline-[#397c61] ${selected ? "border-[#205545] bg-[#d2ebdb] ring-2 ring-[#205545]" : "border-[#dce8e0] bg-white"}`}
+      className={`flex min-h-[76px] min-w-0 flex-col overflow-hidden rounded-lg border px-0.5 py-1 text-left text-[#18332f] active:bg-[#e9f3ec] focus-visible:outline-2 focus-visible:outline-[#397c61] ${selected ? "border-[#205545] bg-[#d2ebdb] ring-2 ring-[#205545]" : "border-[#dce8e0] bg-white"}`}
     >
       <span
-        className={`mx-0.5 text-xs font-semibold ${date === model.today ? "rounded-full bg-[#276451] px-1 text-white" : ""}`}
+        className={`mx-0.5 text-sm font-semibold ${date === model.today ? "rounded-full bg-[#276451] px-1 text-white" : ""}`}
       >
         {day}
       </span>
+      <span id={`calendar-summary-${date}`} className="sr-only">
+        {spokenSummaries.length
+          ? spokenSummaries.join("; ")
+          : "No schedule entries"}
+      </span>
+      {summaries.length > 0 && (
+        <span
+          aria-hidden="true"
+          className="mt-1 self-start rounded bg-[#e6f2ea] px-1 text-xs font-semibold text-[#205545] sm:hidden"
+        >
+          {summaries.length} <span className="sr-only">entries</span>
+        </span>
+      )}
       {summaries.slice(0, 2).map((summary, index) => (
         <span
           key={`${summary}-${index}`}
-          className="block w-full truncate rounded bg-[#eef5ef] px-0.5 text-[9px] leading-4"
+          className="hidden w-full truncate rounded bg-[#eef5ef] px-0.5 text-xs leading-4 sm:block"
         >
           {summary}
         </span>
       ))}
       {summaries.length > 2 && (
-        <span className="px-0.5 text-[9px] font-semibold text-[#397c61]">
+        <span className="hidden px-0.5 text-xs font-semibold text-[#397c61] sm:block">
           +{summaries.length - 2}
         </span>
       )}

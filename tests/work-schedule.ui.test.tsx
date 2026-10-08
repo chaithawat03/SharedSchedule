@@ -72,6 +72,204 @@ afterEach(() => {
 });
 
 describe("personal work calendar editor", () => {
+  it("keeps the weekly pattern editable while a failed exception month is retried", async () => {
+    const calls: string[] = [];
+    let exceptionReads = 0;
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(async (url: string, options?: RequestInit) => {
+        calls.push(`${options?.method ?? "GET"} ${url}`);
+        if (url === "/api/me/work-pattern" && options?.method === "PUT")
+          return Response.json(JSON.parse(String(options.body)));
+        if (url === "/api/me/work-pattern") return Response.json(pattern);
+        if (url === "/api/me/work-overrides?year=2026&month=10") {
+          exceptionReads++;
+          return exceptionReads === 1
+            ? Response.json({ error: "Unavailable" }, { status: 503 })
+            : Response.json({
+                overrides: [
+                  {
+                    id: "40000000-0000-4000-8000-000000000009",
+                    date: "2026-10-24",
+                    type: "OFF",
+                    startTime: null,
+                    endTime: null,
+                    note: "Factory closure",
+                  },
+                ],
+              });
+        }
+        throw new Error(url);
+      }),
+    );
+
+    render(
+      <WorkCalendarEditor initialYear={2026} initialMonth={10} standalone />,
+    );
+    const month = screen.getByRole("region", { name: "Monthly exceptions" });
+    expect(await within(month).findByRole("alert")).toHaveProperty(
+      "textContent",
+      expect.stringContaining("October 2026"),
+    );
+    expect(
+      (
+        within(month).getByRole("button", {
+          name: "Add exception",
+        }) as HTMLButtonElement
+      ).disabled,
+    ).toBe(true);
+    expect(
+      screen.queryByRole("form", { name: "Exception for this date" }),
+    ).toBeNull();
+    const monday = within(screen.getByRole("group", { name: "Monday" }));
+    fireEvent.change(monday.getByRole("combobox"), {
+      target: { value: "OFF" },
+    });
+    expect((monday.getByRole("combobox") as HTMLSelectElement).value).toBe(
+      "OFF",
+    );
+    expect(
+      (
+        screen.getByRole("button", {
+          name: "Save weekly pattern",
+        }) as HTMLButtonElement
+      ).disabled,
+    ).toBe(false);
+    fireEvent.click(
+      screen.getByRole("button", { name: "Save weekly pattern" }),
+    );
+    await screen.findByText("Weekly pattern saved.");
+    fireEvent.click(
+      within(month).getByRole("button", {
+        name: "Retry loading work calendar",
+      }),
+    );
+    expect(await within(month).findByText("Factory closure")).toBeTruthy();
+    expect(
+      (
+        within(screen.getByRole("group", { name: "Monday" })).getByRole(
+          "combobox",
+        ) as HTMLSelectElement
+      ).value,
+    ).toBe("OFF");
+    expect(calls).toEqual([
+      "GET /api/me/work-pattern",
+      "GET /api/me/work-overrides?year=2026&month=10",
+      "PUT /api/me/work-pattern",
+      "GET /api/me/work-overrides?year=2026&month=10",
+    ]);
+    expect(
+      (
+        within(month).getByRole("button", {
+          name: "Add exception",
+        }) as HTMLButtonElement
+      ).disabled,
+    ).toBe(false);
+    expect(
+      within(month).getByRole("button", { name: "Edit exception 2026-10-24" }),
+    ).toBeTruthy();
+    expect(
+      within(month).getByRole("button", {
+        name: "Delete exception 2026-10-24",
+      }),
+    ).toBeTruthy();
+  });
+  it("retries an initial read failure without writing or changing the selected month", async () => {
+    const calls: string[] = [];
+    let failed = false;
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(async (url: string) => {
+        calls.push(url);
+        if (url === "/api/me/work-pattern" && !failed) {
+          failed = true;
+          return Response.json(
+            { error: "Temporarily unavailable" },
+            { status: 503 },
+          );
+        }
+        if (url === "/api/me/work-pattern") return Response.json(pattern);
+        if (url === "/api/me/work-overrides?year=2026&month=10")
+          return Response.json({ overrides: [] });
+        throw new Error(url);
+      }),
+    );
+
+    render(
+      <WorkCalendarEditor initialYear={2026} initialMonth={10} standalone />,
+    );
+    expect(await screen.findByRole("alert")).toBeTruthy();
+    fireEvent.click(
+      screen.getByRole("button", { name: "Retry loading work calendar" }),
+    );
+    expect(
+      await screen.findByRole("button", { name: "Save weekly pattern" }),
+    ).toBeTruthy();
+    expect(screen.getByText("October 2026")).toBeTruthy();
+    expect(calls).toEqual([
+      "/api/me/work-pattern",
+      "/api/me/work-overrides?year=2026&month=10",
+      "/api/me/work-pattern",
+    ]);
+  });
+  it("retries a failed month read while retaining the loaded weekly pattern", async () => {
+    const calls: string[] = [];
+    let novemberAttempts = 0;
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(async (url: string) => {
+        calls.push(url);
+        if (url === "/api/me/work-pattern") return Response.json(pattern);
+        if (url.includes("month=11")) {
+          novemberAttempts++;
+          return novemberAttempts === 1
+            ? Response.json(
+                { error: "Temporarily unavailable" },
+                { status: 503 },
+              )
+            : Response.json({ overrides: [] });
+        }
+        return Response.json({ overrides: [] });
+      }),
+    );
+    render(
+      <WorkCalendarEditor initialYear={2026} initialMonth={10} standalone />,
+    );
+    await screen.findByRole("button", { name: "Save weekly pattern" });
+    fireEvent.click(
+      screen.getByRole("button", { name: "Next exception month" }),
+    );
+    expect(await screen.findByRole("alert")).toBeTruthy();
+    expect(
+      (
+        screen.getByRole("button", {
+          name: "Add exception",
+        }) as HTMLButtonElement
+      ).disabled,
+    ).toBe(true);
+    expect(
+      (
+        screen.getByRole("button", {
+          name: "Save weekly pattern",
+        }) as HTMLButtonElement
+      ).disabled,
+    ).toBe(false);
+    fireEvent.click(
+      screen.getByRole("button", { name: "Retry loading work calendar" }),
+    );
+    await waitFor(() => expect(screen.queryByRole("alert")).toBeNull());
+    expect(
+      (
+        screen.getByRole("button", {
+          name: "Add exception",
+        }) as HTMLButtonElement
+      ).disabled,
+    ).toBe(false);
+    expect(calls.filter((url) => url === "/api/me/work-pattern")).toHaveLength(
+      2,
+    );
+    expect(calls.filter((url) => url.includes("month=11"))).toHaveLength(2);
+  });
   it("shows only exceptions for the selected month while navigating", async () => {
     vi.stubGlobal(
       "fetch",

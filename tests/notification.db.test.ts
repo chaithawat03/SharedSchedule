@@ -443,4 +443,47 @@ suite("notification PostgreSQL integration", () => {
       )?.actorDisplayName,
     ).toBeNull();
   });
+
+  it("deduplicates a recipient who is both room owner and active participant", async () => {
+    await database.db
+      .insert(roomMembers)
+      .values({ roomId, userId: actor, status: "ACTIVE" })
+      .onConflictDoUpdate({
+        target: [roomMembers.roomId, roomMembers.userId],
+        set: { status: "ACTIVE" },
+      });
+    await database.db
+      .insert(roomMembers)
+      .values({ roomId, userId: owner, status: "ACTIVE" });
+    try {
+      const created = await createEvent(
+        actor,
+        roomId,
+        {
+          statusId,
+          startDate: "2026-11-16",
+          endDate: "2026-11-16",
+          allDay: true,
+        },
+        createEventRepository(database.db),
+      );
+      const rows = await database.db
+        .select()
+        .from(notifications)
+        .where(eq(notifications.eventId, created.id));
+      expect(rows.filter((row) => row.toUserId === owner)).toHaveLength(1);
+      expect(rows.filter((row) => row.toUserId === actor)).toHaveLength(0);
+    } finally {
+      await database.db
+        .delete(roomMembers)
+        .where(
+          and(eq(roomMembers.roomId, roomId), eq(roomMembers.userId, owner)),
+        );
+      await database.db
+        .delete(roomMembers)
+        .where(
+          and(eq(roomMembers.roomId, roomId), eq(roomMembers.userId, actor)),
+        );
+    }
+  });
 });

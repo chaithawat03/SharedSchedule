@@ -8,6 +8,7 @@ import { createDatabase } from "../lib/db";
 import {
   auditLog,
   events,
+  notifications,
   locationMaster,
   roomMembers,
   rooms,
@@ -22,6 +23,7 @@ import {
   createEvent,
   deleteEvent,
   updateEvent,
+  type EventRepository,
 } from "../services/event.service";
 import { createRoom } from "../services/room.service";
 import { createBulkEvents } from "../services/bulk-event.service";
@@ -249,6 +251,82 @@ suite("event PostgreSQL integration", () => {
       await database.db.select().from(events).where(eq(events.title, marker)),
     ).toHaveLength(0);
   });
+
+  for (const action of ["UPDATE_EVENT", "DELETE_EVENT"] as const) {
+    for (const failure of ["audit", "notification"] as const) {
+      it(`rolls back ${action} when ${failure} insertion fails`, async () => {
+        const base = createEventRepository(database.db);
+        const created = await createEvent(
+          userId,
+          roomId,
+          {
+            statusId,
+            startDate: "2026-11-04",
+            endDate: "2026-11-04",
+            allDay: true,
+            title: `${action} ${failure} baseline`,
+          },
+          base,
+        );
+        const auditsBefore = await database.db
+          .select()
+          .from(auditLog)
+          .where(eq(auditLog.entityId, created.id));
+        const noticesBefore = await database.db
+          .select()
+          .from(notifications)
+          .where(eq(notifications.eventId, created.id));
+        const failing: EventRepository = {
+          transaction: (run) =>
+            base.transaction((tx) =>
+              run({
+                ...tx,
+                audit: async (...args) => {
+                  if (failure === "audit") throw new Error("audit failed");
+                  await tx.audit(...args);
+                },
+                notificationWriter: () => ({
+                  ...tx.notificationWriter(),
+                  insert: async (rows) => {
+                    if (failure === "notification")
+                      throw new Error("notification failed");
+                    await tx.notificationWriter().insert(rows);
+                  },
+                }),
+              }),
+            ),
+        };
+        await expect(
+          action === "UPDATE_EVENT"
+            ? updateEvent(
+                userId,
+                created.id,
+                { title: "Changed during failed transaction" },
+                failing,
+              )
+            : deleteEvent(userId, created.id, failing),
+        ).rejects.toThrow(`${failure} failed`);
+        const [stored] = await database.db
+          .select()
+          .from(events)
+          .where(eq(events.id, created.id));
+        expect(stored.title).toBe(`${action} ${failure} baseline`);
+        expect(stored.deletedAt).toBeNull();
+        expect(
+          await database.db
+            .select()
+            .from(auditLog)
+            .where(eq(auditLog.entityId, created.id)),
+        ).toEqual(auditsBefore);
+        expect(
+          await database.db
+            .select()
+            .from(notifications)
+            .where(eq(notifications.eventId, created.id)),
+        ).toEqual(noticesBefore);
+      });
+    }
+  }
 
   it("persists all bulk events and CREATE_EVENT audits, and exposes them in the month model", async () => {
     const repository = createEventRepository(database.db);

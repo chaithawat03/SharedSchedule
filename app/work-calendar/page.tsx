@@ -2,6 +2,7 @@ import Link from "next/link";
 import { cookies } from "next/headers";
 import { redirect } from "next/navigation";
 import { WorkCalendarEditor } from "../../components/work-schedule/WorkCalendarEditor";
+import { AppNavigation } from "../../components/navigation/AppNavigation";
 import { bangkokToday } from "../../lib/calendar/date";
 import { SESSION_COOKIE_NAME } from "../../lib/session/cookie";
 import { getSessionRepository } from "../../lib/session/repository";
@@ -21,6 +22,7 @@ export default async function WorkCalendarPage() {
         >
           ← My Rooms
         </Link>
+        <AppNavigation current="work" />
       </div>
       <WorkCalendarEditor initialYear={year} initialMonth={month} standalone />
     </main>

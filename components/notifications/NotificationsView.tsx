@@ -2,6 +2,7 @@
 
 import Link from "next/link";
 import { useState } from "react";
+import { AppNavigation } from "../navigation/AppNavigation";
 
 export type DisplayNotification = {
   id: string;
@@ -125,6 +126,7 @@ export function NotificationsView({
             {busy === "refresh" ? "Refreshing…" : "Refresh"}
           </button>
         </header>
+        <AppNavigation current="notifications" />
         <h1 className="mt-8 text-4xl font-semibold tracking-[-0.05em]">
           Notifications
         </h1>

@@ -100,6 +100,15 @@ function fixture(empty = false): CalendarMonth {
 }
 
 describe("calendar UI", () => {
+  it("describes each day's schedule without reading event notes and uses a compact mobile count", () => {
+    const html = renderToStaticMarkup(
+      <MonthCalendar initialModel={fixture()} />,
+    );
+    expect(html).toContain('aria-describedby="calendar-summary-2026-10-12"');
+    expect(html).toContain("Smart: WORK, OT");
+    expect(html).toContain('>2 <span class="sr-only">entries</span>');
+    expect(html).not.toContain("text-[9px]");
+  });
   it("renders an empty room with a valid month grid and navigation controls", () => {
     const html = renderToStaticMarkup(
       <MonthCalendar initialModel={fixture(true)} />,

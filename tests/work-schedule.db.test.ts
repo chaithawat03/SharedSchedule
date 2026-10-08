@@ -183,4 +183,93 @@ suite("work calendar PostgreSQL integration", () => {
     ).toHaveLength(1);
     await deleteWorkOverride(userId, first.id, repository);
   });
+
+  it("rolls back a weekly pattern change when its audit fails", async () => {
+    const base = createWorkScheduleRepository(database.db);
+    const before = await database.db
+      .select()
+      .from(workPatterns)
+      .where(eq(workPatterns.userId, userId));
+    const auditsBefore = await database.db
+      .select()
+      .from(auditLog)
+      .where(eq(auditLog.userId, userId));
+    const failing: WorkScheduleRepository = {
+      ...base,
+      transaction: (owner, run) =>
+        base.transaction(owner, (tx) =>
+          run({
+            ...tx,
+            audit: async () => {
+              throw new Error("audit failed");
+            },
+          }),
+        ),
+    };
+    await expect(
+      putWorkPattern(
+        userId,
+        {
+          days: [1, 2, 3, 4, 5, 6, 7].map((weekday) => ({
+            weekday,
+            state: weekday === 7 ? ("WORK" as const) : ("NONE" as const),
+            ...(weekday === 7 ? { startTime: "09:00", endTime: "17:00" } : {}),
+          })),
+        },
+        failing,
+      ),
+    ).rejects.toThrow("audit failed");
+    expect(
+      await database.db
+        .select()
+        .from(workPatterns)
+        .where(eq(workPatterns.userId, userId)),
+    ).toEqual(before);
+    expect(
+      await database.db
+        .select()
+        .from(auditLog)
+        .where(eq(auditLog.userId, userId)),
+    ).toEqual(auditsBefore);
+  });
+
+  it("rolls back an override creation when its audit fails", async () => {
+    const base = createWorkScheduleRepository(database.db);
+    const auditsBefore = await database.db
+      .select()
+      .from(auditLog)
+      .where(eq(auditLog.userId, userId));
+    const failing: WorkScheduleRepository = {
+      ...base,
+      transaction: (owner, run) =>
+        base.transaction(owner, (tx) =>
+          run({
+            ...tx,
+            audit: async () => {
+              throw new Error("audit failed");
+            },
+          }),
+        ),
+    };
+    await expect(
+      createWorkOverride(userId, { date: "2026-11-09", type: "OFF" }, failing),
+    ).rejects.toThrow("audit failed");
+    expect(
+      await database.db
+        .select()
+        .from(workOverrides)
+        .where(
+          and(
+            eq(workOverrides.userId, userId),
+            eq(workOverrides.date, "2026-11-09"),
+          ),
+        ),
+    ).toHaveLength(0);
+    expect(
+      await database.db
+        .select()
+        .from(auditLog)
+        .where(eq(auditLog.userId, userId)),
+    ).toEqual(auditsBefore);
+  });
 });

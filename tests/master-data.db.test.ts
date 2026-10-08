@@ -14,6 +14,7 @@ import { getCalendarMonth } from "../services/calendar.service";
 import {
   createLocation,
   createStatus,
+  deleteStatus,
   deleteLocation,
   listLocations,
   listStatuses,
@@ -280,6 +281,83 @@ suite("room masters PostgreSQL integration", () => {
         row.sortOrder,
       ]),
     ).toEqual(before.map((row) => [row.id, row.sortOrder]));
+  });
+
+  it("rolls back status and location create, patch, and deactivate when audit fails", async () => {
+    const location = await createLocation(
+      userId,
+      roomId,
+      { name: "M10 existing location" },
+      repo,
+    );
+    const beforeStatuses = await listStatuses(userId, roomId, true, repo);
+    const beforeLocations = await listLocations(userId, roomId, true, repo);
+    const auditsBefore = await database.db
+      .select()
+      .from(auditLog)
+      .where(eq(auditLog.roomId, roomId));
+    const failing: MasterRepository = {
+      ...repo,
+      transaction: (run) =>
+        repo.transaction((tx) =>
+          run({
+            ...tx,
+            audit: async () => {
+              throw new Error("audit failed");
+            },
+          }),
+        ),
+    };
+    const actions = [
+      () =>
+        createStatus(
+          userId,
+          roomId,
+          { code: "M10_FAILED", name: "M10 failed" },
+          failing,
+        ),
+      () =>
+        patchStatus(
+          userId,
+          roomId,
+          ownerWithoutMembershipStatusId,
+          { name: "M10 changed" },
+          failing,
+        ),
+      () =>
+        deleteStatus(userId, roomId, ownerWithoutMembershipStatusId, failing),
+      () =>
+        createLocation(
+          userId,
+          roomId,
+          { name: "M10 failed location" },
+          failing,
+        ),
+      () =>
+        patchLocation(
+          userId,
+          roomId,
+          location.id,
+          { name: "M10 changed location" },
+          failing,
+        ),
+      () => deleteLocation(userId, roomId, location.id, failing),
+    ];
+    for (const action of actions) {
+      await expect(action()).rejects.toThrow("audit failed");
+      expect(await listStatuses(userId, roomId, true, repo)).toEqual(
+        beforeStatuses,
+      );
+      expect(await listLocations(userId, roomId, true, repo)).toEqual(
+        beforeLocations,
+      );
+      expect(
+        await database.db
+          .select()
+          .from(auditLog)
+          .where(eq(auditLog.roomId, roomId)),
+      ).toEqual(auditsBefore);
+    }
   });
 
   it("preserves the last active status transactionally", async () => {

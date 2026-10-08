@@ -2,6 +2,7 @@ import Link from "next/link";
 import type { RoomSummary } from "../../services/room.service";
 import { LogoutButton } from "../session/LogoutButton";
 import { CreateRoomForm } from "./CreateRoomForm";
+import { AppNavigation } from "../navigation/AppNavigation";
 
 export function RoomListView({
   rooms,
@@ -21,6 +22,7 @@ export function RoomListView({
           </Link>
           <span className="text-sm text-[#56716a]">{displayName}</span>
         </header>
+        <AppNavigation current="rooms" />
         <div className="mt-10">
           <p className="text-xs font-semibold uppercase tracking-[0.14em] text-[#397c61]">
             Your shared spaces

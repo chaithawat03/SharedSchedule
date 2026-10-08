@@ -69,6 +69,7 @@ export function WorkCalendarEditor({
   onChanged?: () => Promise<boolean>;
 }) {
   const dialogRef = useRef<HTMLDialogElement>(null);
+  const closeButtonRef = useRef<HTMLButtonElement>(null);
   const [days, setDays] = useState<PatternDay[] | null>(null);
   const [exceptions, setExceptions] = useState<Exception[]>([]);
   const [month, setMonth] = useState({
@@ -81,12 +82,24 @@ export function WorkCalendarEditor({
   const [error, setError] = useState<string | null>(null);
   const [message, setMessage] = useState<string | null>(null);
   const [refreshPending, setRefreshPending] = useState(false);
+  const [readAttempt, setReadAttempt] = useState(0);
+  const [readFailed, setReadFailed] = useState(false);
+  const [exceptionsLoaded, setExceptionsLoaded] = useState(false);
+  const [exceptionReadError, setExceptionReadError] = useState<string | null>(
+    null,
+  );
+  const partialRead = useRef<{
+    key: string;
+    pattern?: PatternDay[];
+    overrides?: Exception[];
+  } | null>(null);
 
   useEffect(() => {
     if (standalone) return;
     const opener = document.activeElement;
     const dialog = dialogRef.current;
     dialog?.showModal();
+    closeButtonRef.current?.focus({ preventScroll: true });
     return () => {
       if (dialog?.open) dialog.close();
       if (opener instanceof HTMLElement && opener.isConnected)
@@ -96,24 +109,52 @@ export function WorkCalendarEditor({
 
   useEffect(() => {
     let active = true;
-    Promise.all([
-      responseJson<{ days: PatternDay[] }>("/api/me/work-pattern"),
-      responseJson<{ overrides: Exception[] }>(
-        `/api/me/work-overrides?year=${month.year}&month=${month.month}`,
-      ),
+    const key = `${month.year}-${month.month}`;
+    if (partialRead.current?.key !== key) partialRead.current = { key };
+    const partial = partialRead.current;
+    const patternRequested = !partial.pattern;
+    Promise.allSettled([
+      patternRequested
+        ? responseJson<{ days: PatternDay[] }>("/api/me/work-pattern")
+        : Promise.resolve({ days: partial.pattern! }),
+      partial.overrides
+        ? Promise.resolve({ overrides: partial.overrides })
+        : responseJson<{ overrides: Exception[] }>(
+            `/api/me/work-overrides?year=${month.year}&month=${month.month}`,
+          ),
     ])
       .then(([pattern, overrides]) => {
         if (!active) return;
-        setDays(pattern.days);
-        setExceptions(overrides.overrides);
-      })
-      .catch((cause) => {
-        if (active)
-          setError(
-            cause instanceof Error
-              ? cause.message
-              : "Unable to load work calendar",
+        if (pattern.status === "fulfilled" && patternRequested) {
+          partial.pattern = pattern.value.days;
+          setDays(pattern.value.days);
+        }
+        if (overrides.status === "fulfilled") {
+          partial.overrides = overrides.value.overrides;
+          setExceptions(overrides.value.overrides);
+          setExceptionsLoaded(true);
+          setExceptionReadError(null);
+        } else {
+          setExceptionsLoaded(false);
+          setExceptionReadError(
+            `Unable to load exceptions for ${months[month.month - 1]} ${month.year}. Please try again.`,
           );
+        }
+        if (partial.pattern && partial.overrides) {
+          setError(null);
+          setReadFailed(false);
+          partialRead.current = null;
+        } else {
+          if (pattern.status === "rejected") {
+            const cause = pattern.reason;
+            setError(
+              cause instanceof Error
+                ? cause.message
+                : "Unable to load weekly pattern",
+            );
+          }
+          setReadFailed(true);
+        }
       })
       .finally(() => {
         if (active) setLoading(false);
@@ -121,7 +162,7 @@ export function WorkCalendarEditor({
     return () => {
       active = false;
     };
-  }, [month.year, month.month]);
+  }, [month.year, month.month, readAttempt]);
 
   function changeDay(weekday: number, values: Partial<PatternDay>) {
     setDays(
@@ -138,6 +179,9 @@ export function WorkCalendarEditor({
     if (year === month.year && selectedMonth === month.month) return;
     setLoading(true);
     setError(null);
+    setReadFailed(false);
+    setExceptionsLoaded(false);
+    setExceptionReadError(null);
     setDraft(null);
     setExceptions([]);
     setMonth({ year, month: selectedMonth });
@@ -197,6 +241,7 @@ export function WorkCalendarEditor({
   }
 
   function startAdd() {
+    if (!exceptionsLoaded || loading) return;
     setError(null);
     setMessage(null);
     setDraft({
@@ -209,6 +254,7 @@ export function WorkCalendarEditor({
   }
 
   function startEdit(value: Exception) {
+    if (!exceptionsLoaded || loading) return;
     setError(null);
     setMessage(null);
     setDraft({
@@ -223,7 +269,7 @@ export function WorkCalendarEditor({
 
   async function saveException(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
-    if (!draft || pending) return;
+    if (!draft || pending || !exceptionsLoaded || loading) return;
     setPending(true);
     setError(null);
     setMessage(null);
@@ -265,7 +311,12 @@ export function WorkCalendarEditor({
   }
 
   async function removeException(value: Exception) {
-    if (pending || !window.confirm(`Delete the exception for ${value.date}?`))
+    if (
+      pending ||
+      loading ||
+      !exceptionsLoaded ||
+      !window.confirm(`Delete the exception for ${value.date}?`)
+    )
       return;
     setPending(true);
     setError(null);
@@ -302,6 +353,7 @@ export function WorkCalendarEditor({
         </div>
         {onClose && (
           <button
+            ref={closeButtonRef}
             type="button"
             onClick={onClose}
             aria-label="Close work calendar"
@@ -321,6 +373,21 @@ export function WorkCalendarEditor({
         >
           {error}
         </p>
+      )}
+      {readFailed && !loading && !exceptionReadError && (
+        <button
+          type="button"
+          onClick={() => {
+            setError(null);
+            setReadFailed(false);
+            setExceptionReadError(null);
+            setLoading(true);
+            setReadAttempt((current) => current + 1);
+          }}
+          className="mt-3 min-h-11 rounded-xl border border-[#bfd4c6] bg-white px-4 font-semibold text-[#205545]"
+        >
+          Retry loading work calendar
+        </button>
       )}
       {message && (
         <p role="status" className="mt-3 text-sm text-[#276451]">
@@ -377,7 +444,7 @@ export function WorkCalendarEditor({
                   </label>
                 </div>
                 {day.state === "WORK" && (
-                  <div className="mt-3 grid grid-cols-2 gap-3">
+                  <div className="mt-3 grid grid-cols-1 gap-3 min-[380px]:grid-cols-2">
                     <label className="text-sm">
                       Start time
                       <input
@@ -473,15 +540,36 @@ export function WorkCalendarEditor({
         <p className="mt-2 text-sm text-[#567269]">
           {months[month.month - 1]} {month.year}
         </p>
+        {exceptionReadError && (
+          <>
+            <p role="alert" className="mt-3 text-sm text-[#a02f25]">
+              {exceptionReadError}
+            </p>
+            {!loading && (
+              <button
+                type="button"
+                onClick={() => {
+                  setExceptionReadError(null);
+                  setReadFailed(false);
+                  setLoading(true);
+                  setReadAttempt((current) => current + 1);
+                }}
+                className="mt-3 min-h-11 rounded-xl border border-[#bfd4c6] bg-white px-4 font-semibold text-[#205545]"
+              >
+                Retry loading work calendar
+              </button>
+            )}
+          </>
+        )}
         <button
           type="button"
           onClick={startAdd}
-          disabled={!days || pending}
+          disabled={!days || !exceptionsLoaded || loading || pending}
           className="mt-4 min-h-11 w-full rounded-xl bg-[#205545] px-4 font-semibold text-white disabled:opacity-50"
         >
           Add exception
         </button>
-        {exceptions.length === 0 && !loading && (
+        {exceptions.length === 0 && !loading && exceptionsLoaded && (
           <p className="mt-4 text-sm text-[#6c8476]">
             No exceptions this month.
           </p>
@@ -515,6 +603,7 @@ export function WorkCalendarEditor({
                   type="button"
                   aria-label={`Edit exception ${value.date}`}
                   onClick={() => startEdit(value)}
+                  disabled={!exceptionsLoaded || loading || pending}
                   className="min-h-11 rounded-xl border border-[#bfd4c6] px-4"
                 >
                   Edit
@@ -523,6 +612,7 @@ export function WorkCalendarEditor({
                   type="button"
                   aria-label={`Delete exception ${value.date}`}
                   onClick={() => void removeException(value)}
+                  disabled={!exceptionsLoaded || loading || pending}
                   className="min-h-11 rounded-xl border border-[#e1bdb8] px-4 text-[#a02f25]"
                 >
                   Delete
@@ -595,7 +685,7 @@ export function WorkCalendarEditor({
             </select>
           </label>
           {draft.type === "WORK" && (
-            <div className="mt-3 grid grid-cols-2 gap-3">
+            <div className="mt-3 grid grid-cols-1 gap-3 min-[380px]:grid-cols-2">
               <label className="text-sm">
                 Start time
                 <input
@@ -643,7 +733,7 @@ export function WorkCalendarEditor({
               className={`${field} mt-1 min-h-20 py-2`}
             />
           </label>
-          <div className="mt-4 flex gap-2">
+          <div className="sticky bottom-0 z-10 -mx-5 mt-4 flex gap-2 bg-[#f6f8f5] px-5 pb-[calc(0.5rem+env(safe-area-inset-bottom))] pt-3 sm:-mx-7 sm:px-7">
             <button
               type="button"
               onClick={() => setDraft(null)}

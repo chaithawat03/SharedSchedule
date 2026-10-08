@@ -3,6 +3,7 @@
 import { useEffect, useRef, useState, type FormEvent } from "react";
 import { STATUS_ICON_TOKENS } from "../../lib/master-data/icons";
 import { DEFAULT_STATUS_CODES } from "../../lib/rooms/default-statuses";
+import { AppNavigation } from "../navigation/AppNavigation";
 
 type Status = {
   id: string;
@@ -38,6 +39,7 @@ function MasterEditor({
   onSave: (payload: Record<string, unknown>) => Promise<boolean>;
 }) {
   const dialogRef = useRef<HTMLDialogElement>(null);
+  const closeButtonRef = useRef<HTMLButtonElement>(null);
   const [code, setCode] = useState(
     editor.kind === "status" ? (editor.row?.code ?? "") : "",
   );
@@ -49,10 +51,14 @@ function MasterEditor({
     editor.kind === "status" ? (editor.row?.icon ?? "") : "",
   );
   useEffect(() => {
+    const opener = document.activeElement;
     const dialog = dialogRef.current;
     dialog?.showModal();
+    closeButtonRef.current?.focus({ preventScroll: true });
     return () => {
       if (dialog?.open) dialog.close();
+      if (opener instanceof HTMLElement && opener.isConnected)
+        opener.focus({ preventScroll: true });
     };
   }, []);
   async function submit(event: FormEvent<HTMLFormElement>) {
@@ -79,13 +85,14 @@ function MasterEditor({
       <div className="flex min-h-full items-end sm:items-center sm:justify-center">
         <form
           onSubmit={(event) => void submit(event)}
-          className="flex min-h-dvh w-full flex-col overflow-y-auto bg-[#f6f8f5] px-5 pb-[calc(1rem+env(safe-area-inset-bottom))] pt-[calc(1rem+env(safe-area-inset-top))] text-[#18332f] sm:min-h-0 sm:max-h-[90dvh] sm:max-w-xl sm:rounded-3xl sm:p-6"
+          className="flex max-h-dvh min-h-dvh w-full flex-col overflow-y-auto bg-[#f6f8f5] px-5 pb-[calc(1rem+env(safe-area-inset-bottom))] pt-[calc(1rem+env(safe-area-inset-top))] text-[#18332f] sm:min-h-0 sm:max-h-[90dvh] sm:max-w-xl sm:rounded-3xl sm:p-6"
         >
           <div className="flex items-center justify-between gap-3">
             <h2 id="master-editor-heading" className="text-xl font-semibold">
               {editor.row ? "Edit" : "Add"} {editor.kind}
             </h2>
             <button
+              ref={closeButtonRef}
               type="button"
               onClick={onClose}
               disabled={pending}
@@ -158,7 +165,7 @@ function MasterEditor({
           <p role="alert" className="mt-3 min-h-6 text-sm text-[#a02f25]">
             {error}
           </p>
-          <div className="sticky bottom-0 mt-2 flex gap-2 bg-[#f6f8f5] pt-3">
+          <div className="sticky bottom-0 mt-2 flex gap-2 bg-[#f6f8f5] pb-[env(safe-area-inset-bottom)] pt-3 sm:pb-0">
             <button
               type="button"
               onClick={onClose}
@@ -285,6 +292,7 @@ export function RoomMastersSettings({
         >
           ← Back to room
         </a>
+        <AppNavigation current="settings" roomId={roomId} isOwner />
         <h1 className="mt-5 text-3xl font-semibold">Room settings</h1>
         <p className="mt-3 rounded-xl bg-[#e7efe8] p-3 text-sm leading-6 text-[#315647]">
           Deactivating removes this choice from new events. Existing events keep

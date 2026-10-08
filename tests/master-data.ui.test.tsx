@@ -43,6 +43,22 @@ const initialLocations = [
 ];
 
 describe("room master settings UI", () => {
+  it("focuses the editor close control and restores its opener on close", () => {
+    render(
+      <RoomMastersSettings
+        roomId={roomId}
+        initialStatuses={initialStatuses}
+        initialLocations={initialLocations}
+      />,
+    );
+    const opener = screen.getByRole("button", { name: "Add status" });
+    opener.focus();
+    fireEvent.click(opener);
+    const close = screen.getByRole("button", { name: "Close editor" });
+    expect(document.activeElement).toBe(close);
+    fireEvent.click(close);
+    expect(document.activeElement).toBe(opener);
+  });
   beforeEach(() => {
     HTMLDialogElement.prototype.showModal = function () {
       this.setAttribute("open", "");

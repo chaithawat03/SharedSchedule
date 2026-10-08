@@ -1,6 +1,6 @@
 # SharedSchedule
 
-Mobile-first shared scheduling, built with Next.js App Router, TypeScript, Tailwind CSS, PostgreSQL, and Drizzle ORM. This repository contains **Milestone 9: Audit and Notifications Foundation**.
+Mobile-first shared scheduling, built with Next.js App Router, TypeScript, Tailwind CSS, PostgreSQL, and Drizzle ORM. Milestone 10 adds mobile, accessibility, recovery, and release verification work without changing the Milestones 1–9 scheduling rules.
 
 ## Requirements
 
@@ -26,18 +26,19 @@ Enter a Thai mobile number to sign in. If the number is new, the app asks for a 
 
 ## Scripts
 
-| Script                 | Purpose                                         |
-| ---------------------- | ----------------------------------------------- |
-| `npm run dev`          | Start the development server                    |
-| `npm run build`        | Create a production build                       |
-| `npm run lint`         | Run ESLint                                      |
-| `npm run typecheck`    | Check strict TypeScript types                   |
-| `npm test`             | Run Vitest                                      |
-| `npm run format`       | Format project files                            |
-| `npm run format:check` | Check formatting                                |
-| `npm run db:generate`  | Generate SQL migrations from the Drizzle schema |
-| `npm run db:migrate`   | Apply committed migrations to `DATABASE_URL`    |
-| `npm run db:seed`      | Insert idempotent development fixtures          |
+| Script                 | Purpose                                          |
+| ---------------------- | ------------------------------------------------ |
+| `npm run dev`          | Start the development server                     |
+| `npm run build`        | Create a production build                        |
+| `npm run lint`         | Run ESLint                                       |
+| `npm run typecheck`    | Check strict TypeScript types                    |
+| `npm test`             | Run Vitest                                       |
+| `npm run test:e2e`     | Run Playwright against a dedicated test database |
+| `npm run format`       | Format project files                             |
+| `npm run format:check` | Check formatting                                 |
+| `npm run db:generate`  | Generate SQL migrations from the Drizzle schema  |
+| `npm run db:migrate`   | Apply committed migrations to `DATABASE_URL`     |
+| `npm run db:seed`      | Insert idempotent development fixtures           |
 
 ## Architecture
 
@@ -161,3 +162,5 @@ Do not commit `.env.local`, production credentials, or session or invite tokens.
 ## Deployment
 
 Provide PostgreSQL and set `DATABASE_URL` in the server environment. Run `npm ci`, `npm run db:migrate`, and `npm run build`, then start with `npm run start`. Run `db:seed` only for development data, never as part of production deployment. Host the Next.js app on a Node-compatible platform and use HTTPS for the future session cookie.
+
+See [Milestone 10 release verification](docs/milestone-10-release.md) for dedicated PostgreSQL test setup, migration and browser commands, device checks, and deployment risks. PostgreSQL and real-device checks are required before calling this release production verified.

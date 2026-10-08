@@ -71,6 +71,10 @@ describe("room screens", () => {
     expect(memberHtml).toContain("Partner");
     expect(memberHtml).not.toContain("Create invite");
     expect(memberHtml).not.toContain("Join as Participant");
+    expect(memberHtml).toContain('aria-label="App navigation"');
+    expect(memberHtml).toContain('href="/work-calendar"');
+    expect(memberHtml).toContain('href="/notifications"');
+    expect(memberHtml).not.toContain(`/room/${room.id}/settings`);
   });
 
   it("offers explicit participation only to an owner who is not yet a participant", () => {
