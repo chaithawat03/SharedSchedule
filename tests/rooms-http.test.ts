@@ -17,13 +17,21 @@ import {
 
 function request(
   path: string,
-  options: { method?: string; token?: string; body?: unknown } = {},
+  options: {
+    method?: string;
+    token?: string;
+    body?: unknown;
+    headers?: Record<string, string>;
+  } = {},
 ) {
   return new NextRequest(`http://localhost:3000${path}`, {
     method: options.method ?? "GET",
-    headers: options.token
-      ? { cookie: `${SESSION_COOKIE_NAME}=${options.token}` }
-      : undefined,
+    headers: {
+      ...(options.token
+        ? { cookie: `${SESSION_COOKIE_NAME}=${options.token}` }
+        : {}),
+      ...options.headers,
+    },
     body: options.body === undefined ? undefined : JSON.stringify(options.body),
   });
 }
@@ -357,6 +365,23 @@ describe("room HTTP flow", () => {
       repo,
     );
     expect(stillDenied.status).toBe(403);
+    const proxied = await handleCreateInvite(
+      request(`/api/rooms/${room.id}/invites`, {
+        method: "POST",
+        token: owner.token,
+        body: {},
+        headers: {
+          origin: "https://neon-candidate---sharedschedule-staging.example.run.app",
+        },
+      }),
+      room.id,
+      sessions,
+      repo,
+    );
+    expect(proxied.status).toBe(201);
+    expect((await proxied.json()).url).toMatch(
+      /^https:\/\/neon-candidate---sharedschedule-staging\.example\.run\.app\/invite\//,
+    );
   });
 
   it("resumes a signed-out invitation after registration and opens the invited room", async () => {

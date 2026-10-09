@@ -52,6 +52,19 @@ async function body(request: NextRequest) {
   }
 }
 
+function inviteOrigin(request: NextRequest) {
+  const origin = request.headers.get("origin");
+  if (origin) {
+    try {
+      const url = new URL(origin);
+      if (url.protocol === "https:" || url.protocol === "http:") return url.origin;
+    } catch {
+      // Fall back to the request URL for clients without a valid Origin header.
+    }
+  }
+  return request.nextUrl.origin;
+}
+
 function validateRoomId(roomId: string) {
   if (!uuidPattern.test(roomId))
     throw new RoomError("NOT_FOUND", "Room not found");
@@ -138,7 +151,7 @@ export async function handleCreateInvite(
       repository,
     );
     return json(
-      { ...invite, url: `${request.nextUrl.origin}/invite/${invite.token}` },
+      { ...invite, url: `${inviteOrigin(request)}/invite/${invite.token}` },
       201,
     );
   } catch (error) {
