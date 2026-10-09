@@ -63,7 +63,7 @@ test("two members join, share schedules, and retain ownership boundaries", async
   await dialog.getByLabel("Status").selectOption({ label: "OT" });
   await dialog.getByLabel("All day").uncheck();
   await dialog.getByLabel("Start time").fill("17:20");
-  await dialog.getByLabel("End time").fill("19:40");
+  await dialog.getByLabel("End time", { exact: true }).fill("19:40");
   await dialog.getByRole("button", { name: "Save event" }).click();
   await expect(dialog.getByText(/17:20/)).toBeVisible();
   await dialog.getByRole("button", { name: "Close day detail" }).click();
@@ -135,7 +135,7 @@ test("two members join, share schedules, and retain ownership boundaries", async
       .click();
     await expect(page.getByText("1 selected")).toBeVisible();
     await page.getByRole("button", { name: "Cancel" }).click();
-    await page.getByRole("link", { name: "Settings" }).click();
+    await page.getByRole("link", { name: "Settings", exact: true }).click();
     await expect(
       page.getByRole("heading", { name: "Room settings" }),
     ).toBeVisible();

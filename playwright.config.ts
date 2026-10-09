@@ -10,14 +10,14 @@ if (
   throw new Error("TEST_DATABASE_URL must name a dedicated test database");
 }
 
-const baseURL = "http://127.0.0.1:3101";
+const baseURL = "https://localhost:3101";
 
 export default defineConfig({
   testDir: "./e2e",
   fullyParallel: false,
   workers: 1,
   reporter: "list",
-  use: { baseURL, trace: "retain-on-failure" },
+  use: { baseURL, ignoreHTTPSErrors: true, trace: "retain-on-failure" },
   projects: [
     {
       name: "chromium-desktop",
@@ -48,8 +48,9 @@ export default defineConfig({
   ],
   webServer: testDatabaseUrl
     ? {
-        command: "npm run start -- --port 3101",
-        url: baseURL,
+        command: "node e2e/https-server.mjs",
+        url: "https://127.0.0.1:3101",
+        ignoreHTTPSErrors: true,
         reuseExistingServer: false,
         timeout: 120_000,
         env: { DATABASE_URL: testDatabaseUrl },
